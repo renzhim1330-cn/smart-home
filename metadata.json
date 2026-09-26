@@ -1,0 +1,7 @@
+{
+  "name": "掌控板2.0少儿创新智能家居IoT工坊",
+  "description": "专为小学少儿创客竞赛与演示设计的掌控板2.0智能家居IoT纸箱模型全案规划、图纸、接线、积木代码与答辩系统",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
