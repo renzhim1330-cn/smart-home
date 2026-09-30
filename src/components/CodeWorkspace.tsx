@@ -3,9 +3,221 @@ import { PYTHON_CODE } from '../data/projectData';
 import { Code2, Copy, Check, FileCode, Terminal, Sparkles, Cpu, CheckCircle2, ChevronRight, Zap, ExternalLink } from 'lucide-react';
 
 export const CodeWorkspace: React.FC = () => {
-  const [activeSubTab, setActiveSubTab] = useState<'main_code' | 'vscode_setup' | 'ai_prompts'>('vscode_setup');
+  const [activeSubTab, setActiveSubTab] = useState<'main_code' | 'vscode_setup' | 'unit_tests' | 'ai_prompts'>('vscode_setup');
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState<string | null>(null);
+  const [activeUnitTest, setActiveUnitTest] = useState<'keypad' | 'servo' | 'sensors' | 'fan_light' | 'voice'>('keypad');
+
+  const unitTestScripts = {
+    keypad: {
+      name: 'test_keypad.py',
+      title: '3×4 矩阵薄膜键盘独立测试',
+      desc: '插好 P2~P16 排线后运行，按下 1~9、0、*、#，测试屏幕回显与按 123456# 验证',
+      code: `# ==============================================================================
+# 单元测试 1：3×4 矩阵薄膜键盘独立扫描测试
+# 用途：测试 P2, P3, P13, P14 (行) 与 P15, P16, P4 (列) 连线
+# ==============================================================================
+from mpython import *
+import time
+from machine import Pin
+
+ROW_PINS = [Pin(Pin.P2, Pin.IN, Pin.PULL_UP), Pin(Pin.P3, Pin.IN, Pin.PULL_UP),
+            Pin(Pin.P13, Pin.IN, Pin.PULL_UP), Pin(Pin.P14, Pin.IN, Pin.PULL_UP)]
+COL_PINS = [Pin(Pin.P15, Pin.OUT), Pin(Pin.P16, Pin.OUT), Pin(Pin.P4, Pin.OUT)]
+
+KEY_MAP = [
+    ['1', '2', '3'],
+    ['4', '5', '6'],
+    ['7', '8', '9'],
+    ['*', '0', '#']
+]
+
+def scan():
+    for c_idx, col in enumerate(COL_PINS):
+        for c in COL_PINS: c.value(1)
+        col.value(0)
+        time.sleep_us(25)
+        for r_idx, row in enumerate(ROW_PINS):
+            if row.value() == 0:
+                for c in COL_PINS: c.value(1)
+                return KEY_MAP[r_idx][c_idx]
+    return None
+
+oled.fill(0)
+oled.DispChar("3x4 键盘测试启动", 15, 15)
+oled.DispChar("请按实体键输入...", 10, 35)
+oled.show()
+
+buf = ""
+while True:
+    k = scan()
+    if k:
+        if k == '*': buf = ""
+        elif k == '#':
+            oled.fill(0)
+            oled.DispChar("验证: " + buf, 15, 20)
+            oled.show()
+            try: buzzer.pitch(1000 if buf == "123456" else 400, 200)
+            except: pass
+            time.sleep(1.2)
+            buf = ""
+        else:
+            if len(buf) < 6: buf += k
+        oled.fill(0)
+        oled.DispChar("按键: " + k + " 缓存: " + buf, 10, 25)
+        oled.show()
+        try: buzzer.pitch(800, 50)
+        except: pass
+        time.sleep(0.28)`
+    },
+    servo: {
+      name: 'test_servo.py',
+      title: 'SG90 门梁顶置直驱舵机测试',
+      desc: '插好 P0 信号线与外接 5V 动力电后运行，测试大门在 0°(关) 与 90°(开) 平顺旋转',
+      code: `# ==============================================================================
+# 单元测试 2：SG90 微型舵机开门与闭门角度测试
+# 用途：测试 P0 信号线与外接 5V 独立供电稳定性，杜绝舵机拉垮主控
+# ==============================================================================
+from mpython import *
+import time
+from machine import Pin, PWM
+
+servo_pwm = PWM(Pin(Pin.P0), freq=50)
+
+def set_angle(angle):
+    duty = int(25 + (angle / 180.0) * 100)
+    servo_pwm.duty(duty)
+
+oled.fill(0)
+oled.DispChar("SG90 舵机测试中", 12, 15)
+oled.show()
+
+while True:
+    oled.fill(0)
+    oled.DispChar("舵机: 0度 (关门)", 15, 25)
+    oled.show()
+    set_angle(0)
+    time.sleep(3)
+
+    oled.fill(0)
+    oled.DispChar("舵机: 90度 (开门)", 15, 25)
+    oled.show()
+    set_angle(90)
+    try: buzzer.pitch(880, 100)
+    except: pass
+    time.sleep(3)`
+    },
+    sensors: {
+      name: 'test_sensors.py',
+      title: 'DHT11温湿度与PIR防盗测试',
+      desc: 'DHT11接P1、PIR接P8；对着传感器哈气观察升温>28℃，在探头前挥手观察报警',
+      code: `# ==============================================================================
+# 单元测试 3：DHT11 温湿度与 PIR 人体红外防盗测试
+# 用途：测试 P1 单总线与 P8 红外探头，少儿哈热气升温 >28℃ 触发红灯
+# ==============================================================================
+from mpython import *
+import time
+import dht
+from machine import Pin
+
+dht_dev = dht.DHT11(Pin(Pin.P1))
+pir_dev = Pin(Pin.P8, Pin.IN)
+
+while True:
+    t, h = 25.0, 50.0
+    try:
+        dht_dev.measure()
+        t = dht_dev.temperature()
+        h = dht_dev.humidity()
+    except Exception:
+        pass
+
+    pir_val = pir_dev.value()
+
+    oled.fill(0)
+    oled.DispChar("温度:{:.1f}C 湿度:{}%".format(t, int(h)), 6, 12)
+    if t > 28.0:
+        oled.DispChar("! 高温 >28C 自动排风 !", 5, 32)
+        rgb.fill((255, 0, 0)) # 红灯
+        rgb.write()
+    elif pir_val == 1:
+        oled.DispChar("! PIR感应入侵 !", 10, 32)
+        rgb.fill((0, 150, 255)) # 蓝灯
+        rgb.write()
+    else:
+        oled.DispChar("环境正常 守卫中", 12, 32)
+        rgb.fill((0, 0, 0))
+        rgb.write()
+    oled.show()
+    time.sleep(1.5)`
+    },
+    fan_light: {
+      name: 'test_fan_light.py',
+      title: '实体客厅吊灯 (P11) 与排风扇 (P5) 测试',
+      desc: 'P11接吊灯模块，P5接微型风扇；自动循环测试：仅开灯、仅开扇、全开、全关',
+      code: `# ==============================================================================
+# 单元测试 4：客厅实体吸顶吊灯 (P11) 与智能微型风扇 (P5) 测试
+# 用途：测试 P11 实体白光 LED 照亮室内 与 P5 微型直流风扇旋转吹风
+# ==============================================================================
+from mpython import *
+import time
+from machine import Pin
+
+light_pin = Pin(Pin.P11, Pin.OUT)
+fan_pin = Pin(Pin.P5, Pin.OUT)
+
+step = 0
+while True:
+    step = (step + 1) % 4
+    if step == 0:
+        light_pin.value(1); fan_pin.value(0)
+        oled.fill(0); oled.DispChar("客厅吊灯: [开启]", 15, 20); oled.DispChar("风扇: [关闭]", 20, 40); oled.show()
+    elif step == 1:
+        light_pin.value(0); fan_pin.value(1)
+        oled.fill(0); oled.DispChar("客厅吊灯: [关闭]", 15, 20); oled.DispChar("风扇: [吹风中]", 15, 40); oled.show()
+    elif step == 2:
+        light_pin.value(1); fan_pin.value(1)
+        oled.fill(0); oled.DispChar("【全开模式】", 20, 20); oled.DispChar("吊灯:亮 风扇:转", 10, 40); oled.show()
+    else:
+        light_pin.value(0); fan_pin.value(0)
+        oled.fill(0); oled.DispChar("【节能全关】", 20, 20); oled.DispChar("吊灯:灭 风扇:停", 10, 40); oled.show()
+    time.sleep(3)`
+    },
+    voice: {
+      name: 'test_voice.py',
+      title: '离线语音识别模块 (ASR01) 串口测试',
+      desc: 'P6(RX)/P7(TX) 接语音模块，唤醒“小智同学”，说“打开客厅灯”，观察串口指令与回显',
+      code: `# ==============================================================================
+# 单元测试 5：离线语音识别模块 (ASR01/HLK-V20) 串口通信测试
+# 用途：测试 P6 (RX) / P7 (TX) 串口，听懂“小智同学”与“打开客厅灯/风扇”
+# ==============================================================================
+from mpython import *
+import time
+from machine import UART
+
+uart = UART(1, baudrate=9600, rx=Pin.P6, tx=Pin.P7)
+oled.fill(0)
+oled.DispChar("语音模块监听中", 15, 15)
+oled.DispChar("请喊:【小智同学】", 10, 35)
+oled.show()
+
+while True:
+    if uart.any():
+        raw = uart.read()
+        print("收到语音数据:", raw)
+        oled.fill(0)
+        oled.DispChar("收到语音口令!", 15, 15)
+        oled.DispChar(str(raw), 10, 35)
+        oled.show()
+        try: buzzer.pitch(1000, 100)
+        except: pass
+        time.sleep(1.5)
+        oled.fill(0)
+        oled.DispChar("继续监听语音...", 15, 25)
+        oled.show()
+    time.sleep(0.05)`
+    }
+  };
 
   const copyCode = (text: string, isPrompt = false, promptId = '') => {
     navigator.clipboard.writeText(text);
@@ -71,14 +283,22 @@ export const CodeWorkspace: React.FC = () => {
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex bg-slate-800/80 p-1 rounded-xl border border-slate-700 shrink-0">
+        <div className="flex flex-wrap bg-slate-800/80 p-1 rounded-xl border border-slate-700 shrink-0 gap-1">
           <button
             onClick={() => setActiveSubTab('vscode_setup')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
               activeSubTab === 'vscode_setup' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Cpu className="w-3.5 h-3.5" /> VS Code vs Thonny 与插件配置
+            <Cpu className="w-3.5 h-3.5" /> VS Code 安装与固化指南
+          </button>
+          <button
+            onClick={() => setActiveSubTab('unit_tests')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
+              activeSubTab === 'unit_tests' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Terminal className="w-3.5 h-3.5" /> 门外汉独立测试脚本 (3个)
           </button>
           <button
             onClick={() => setActiveSubTab('main_code')}
@@ -86,7 +306,7 @@ export const CodeWorkspace: React.FC = () => {
               activeSubTab === 'main_code' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Code2 className="w-3.5 h-3.5" /> main.py 完整落地源码
+            <Code2 className="w-3.5 h-3.5" /> main.py 全功能源码
           </button>
           <button
             onClick={() => setActiveSubTab('ai_prompts')}
@@ -94,10 +314,81 @@ export const CodeWorkspace: React.FC = () => {
               activeSubTab === 'ai_prompts' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Sparkles className="w-3.5 h-3.5" /> AI 写代码提示词模版
+            <Sparkles className="w-3.5 h-3.5" /> AI 编程提示词
           </button>
         </div>
       </div>
+
+      {/* Unit Tests Tab */}
+      {activeSubTab === 'unit_tests' && (
+        <div className="space-y-4">
+          <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div>
+              <h3 className="font-bold text-white text-base flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-emerald-400" /> 接好一个测一个 · 零基础单元测试程序
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                避免一次性插完所有线导致无法排查故障。每插好一个硬件模块，就在 VS Code 中运行对应的测试脚本！
+              </p>
+            </div>
+
+            <div className="flex flex-wrap bg-slate-950 p-1 rounded-xl border border-slate-800 gap-1">
+              {(['keypad', 'servo', 'sensors', 'fan_light', 'voice'] as const).map((key) => (
+                <button
+                  key={key}
+                  onClick={() => setActiveUnitTest(key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    activeUnitTest === key
+                      ? 'bg-emerald-600 text-white shadow'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {unitTestScripts[key].name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+            <div className="bg-slate-900 px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <span className="font-mono text-xs font-bold text-emerald-400 mr-2">
+                  {unitTestScripts[activeUnitTest].name}
+                </span>
+                <span className="text-xs text-slate-300 font-semibold">
+                  {unitTestScripts[activeUnitTest].title}
+                </span>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  测试要点: {unitTestScripts[activeUnitTest].desc}
+                </div>
+              </div>
+
+              <button
+                onClick={() => copyCode(unitTestScripts[activeUnitTest].code)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors"
+              >
+                {copiedCode ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>已复制代码</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>复制测试代码</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="p-5 overflow-x-auto max-h-[460px] overflow-y-auto">
+              <pre className="font-mono text-xs text-slate-300 leading-relaxed whitespace-pre">
+                {unitTestScripts[activeUnitTest].code}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 1. VS Code vs Thonny & Setup Guide */}
       {activeSubTab === 'vscode_setup' && (
