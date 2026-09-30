@@ -208,7 +208,7 @@ web_socket.bind(('192.168.4.1', 80))
 web_socket.listen(2)
 web_socket.settimeout(0.03)
 
-HTML_PAGE = """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>智馨家园控制台</title><style>body{{font-family:sans-serif;background:#0f172a;color:#fff;text-align:center;padding:12px;margin:0}}h2{{color:#38bdf8;margin:6px 0}}.card{{background:#1e293b;border-radius:12px;padding:12px;margin-bottom:10px}}.btn{{display:inline-block;width:88%;padding:12px;margin:5px 0;font-size:15px;font-weight:bold;color:#fff;background:#2563eb;border:none;border-radius:8px;text-decoration:none;cursor:pointer}}.btn-active{{background:#10b981}}.btn-warning{{background:#f59e0b}}.btn-purple{{background:#8b5cf6}}.val{{font-size:22px;font-weight:bold;color:#4ade80}}input{{padding:10px;border-radius:6px;border:1px solid #475569;width:75%;margin:6px 0;background:#0f172a;color:#fff;text-align:center;font-size:16px}}</style></head><body><h2>🏡 智馨家园 · 全屋控制中心</h2><p style="color:#94a3b8;font-size:11px">AP直连: SmartHome-IoT | 离线语音+门禁版</p><div class="card"><p>室内实时温湿度</p><div class="val">{:.1f}℃ / {:.1f}%</div><p style="font-size:11px;color:#94a3b8">大于28℃触发自动排风降温</p></div><div class="card"><p>智能灯光与电扇 (实时状态)</p><a href="/toggle_light" class="btn {}">客厅吊灯: {}</a><a href="/toggle_fan" class="btn {}">智能排风扇: {}</a></div><div class="card"><p>智能门禁与安防 (当前门: {})</p><a href="/open" class="btn">★ 手机一键远程开门 (90°)</a><a href="/arm" class="btn btn-warning">切换【离家布防模式】</a></div><div class="card"><p>在线修改门禁密码 (当前: {})</p><form action="/setpwd" method="GET"><input type="text" name="pwd" placeholder="输入6位新密码" maxlength="6"><br><button type="submit" class="btn btn-purple">确认更新密码</button></form></div></body></html>"""
+HTML_PAGE = """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>智馨家园控制台</title><style>body{{font-family:sans-serif;background:#0f172a;color:#fff;text-align:center;padding:12px;margin:0}}h2{{color:#38bdf8;margin:6px 0}}.card{{background:#1e293b;border-radius:12px;padding:12px;margin-bottom:10px}}.btn{{display:inline-block;width:88%;padding:12px;margin:5px 0;font-size:15px;font-weight:bold;color:#fff;background:#2563eb;border:none;border-radius:8px;text-decoration:none;cursor:pointer}}.btn-active{{background:#10b981}}.btn-warning{{background:#f59e0b}}.btn-purple{{background:#8b5cf6}}.val{{font-size:22px;font-weight:bold;color:#4ade80}}input{{padding:10px;border-radius:6px;border:1px solid #475569;width:75%;margin:6px 0;background:#0f172a;color:#fff;text-align:center;font-size:16px}}</style></head><body><h2>🏡 智馨家园 · 全屋控制中心</h2><p style="color:#94a3b8;font-size:11px">AP直连: SmartHome-IoT | 离线语音+门禁版</p><div class="card"><p>室内实时温湿度</p><div class="val">{:.1f}℃ / {:.1f}%</div><p style="font-size:11px;color:#94a3b8">大于28℃且有人感应时自动开启排风</p></div><div class="card"><p>智能灯光与电扇 (实时状态)</p><a href="/toggle_light" class="btn {}">客厅吊灯: {}</a><a href="/toggle_fan" class="btn {}">智能排风扇: {}</a></div><div class="card"><p>智能门禁与安防 (当前门: {})</p><a href="/open" class="btn">★ 手机一键远程开门 (90°)</a><a href="/arm" class="btn btn-warning">切换【离家布防模式】</a></div><div class="card"><p>在线修改门禁密码 (当前: {})</p><form action="/setpwd" method="GET"><input type="text" name="pwd" placeholder="输入6位新密码" maxlength="6"><br><button type="submit" class="btn btn-purple">确认更新密码</button></form></div></body></html>"""
 
 # 初始舵机与显示归位
 set_servo_angle(0)
@@ -400,15 +400,17 @@ while True:
         except Exception:
             pass
             
-        # 智能温控排风联动 (阈值 28℃)
-        if curr_temp > 28.0:
+        # 智能温控排风联动 (双重与条件：温度 > 28℃ 且 屋内有人 pir_sensor.value() == 1)
+        human_present = (pir_sensor.value() == 1)
+        if curr_temp > 28.0 and human_present:
             if not fan_is_on:
                 set_fan(True, is_auto=True)
-                voice_feedback_str = "高温 >28C 自动排风"
-        elif auto_fan_active and curr_temp <= 27.5:
-            # 迟滞回落关风扇
-            set_fan(False, is_auto=False)
-            voice_feedback_str = "室温恢复 排风关闭"
+                voice_feedback_str = "高温有人>28C 自动排风"
+        elif auto_fan_active:
+            # 当温度降到 27.5℃ 以下，或者人离开后，自动关闭排风
+            if curr_temp <= 27.5 or not human_present:
+                set_fan(False, is_auto=False)
+                voice_feedback_str = "无人或温降 排风关闭"
             
         if not is_alarm_active:
             refresh_dashboard()

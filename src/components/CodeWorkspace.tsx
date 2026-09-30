@@ -109,11 +109,11 @@ while True:
     },
     sensors: {
       name: 'test_sensors.py',
-      title: 'DHT11温湿度与PIR防盗测试',
-      desc: 'DHT11接P1、PIR接P8；对着传感器哈气观察升温>28℃，在探头前挥手观察报警',
+      title: 'DHT11温湿度与PIR人体双重联动测试',
+      desc: 'DHT11接P1、PIR接P8；验证温度>28℃且有人感应时触发红灯排风，无人时提示节能待机',
       code: `# ==============================================================================
-# 单元测试 3：DHT11 温湿度与 PIR 人体红外防盗测试
-# 用途：测试 P1 单总线与 P8 红外探头，少儿哈热气升温 >28℃ 触发红灯
+# 单元测试 3：DHT11 温湿度与 PIR 人体红外双重联动测试
+# 用途：测试 P1 单总线与 P8 红外探头，温度 >28℃ 且有人感应时触发排风联动
 # ==============================================================================
 from mpython import *
 import time
@@ -135,19 +135,27 @@ while True:
     pir_val = pir_dev.value()
 
     oled.fill(0)
-    oled.DispChar("温度:{:.1f}C 湿度:{}%".format(t, int(h)), 6, 12)
-    if t > 28.0:
-        oled.DispChar("! 高温 >28C 自动排风 !", 5, 32)
-        rgb.fill((255, 0, 0)) # 红灯
+    oled.DispChar("温度:{:.1f}C 湿度:{}%".format(t, int(h)), 4, 8)
+    
+    if t > 28.0 and pir_val == 1:
+        oled.DispChar("【高温且有人】", 10, 26)
+        oled.DispChar("触发自动排风降温!", 6, 44)
+        rgb.fill((255, 0, 0)) # 红色警告并启动排风
+        rgb.write()
+    elif t > 28.0 and pir_val == 0:
+        oled.DispChar("【高温但无人】", 10, 26)
+        oled.DispChar("节能待机不排风", 10, 44)
+        rgb.fill((200, 100, 0)) # 橙色待机
         rgb.write()
     elif pir_val == 1:
-        oled.DispChar("! PIR感应入侵 !", 10, 32)
-        rgb.fill((0, 150, 255)) # 蓝灯
+        oled.DispChar("室内有人 温度正常", 8, 30)
+        rgb.fill((0, 150, 255)) # 蓝色提示
         rgb.write()
     else:
-        oled.DispChar("环境正常 守卫中", 12, 32)
+        oled.DispChar("环境正常 守卫中", 12, 30)
         rgb.fill((0, 0, 0))
         rgb.write()
+        
     oled.show()
     time.sleep(1.5)`
     },

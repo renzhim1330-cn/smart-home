@@ -14,6 +14,7 @@ export const IoTSimulator: React.FC = () => {
   const [lightOn, setLightOn] = useState(false);
   const [fanOn, setFanOn] = useState(false);
   const [autoFanTriggered, setAutoFanTriggered] = useState(false);
+  const [humanPresent, setHumanPresent] = useState(true); // 屋内是否有人 (PIR感应)
   const [voiceBubble, setVoiceBubble] = useState<string | null>(null);
   
   // 3x4 Keypad & Security state
@@ -71,27 +72,38 @@ export const IoTSimulator: React.FC = () => {
     }
   };
 
-  // High Temp > 28℃ Auto-Fan override
+  // High Temp > 28℃ AND Human Present Auto-Fan override
   useEffect(() => {
-    if (temp > 28) {
+    if (temp > 28 && humanPresent) {
       if (!fanOn) {
         setFanOn(true);
         setAutoFanTriggered(true);
-        setOledMessage(`高温 ${temp}℃ > 28℃: 自动排风中`);
+        setOledMessage(`高温 ${temp}℃且有人: 自动排风中`);
         setRgbColor('red');
         const now = new Date().toLocaleTimeString();
         setWebLogs((prev) => [
-          { id: Date.now().toString(), time: now, action: `[温控联动] DHT11检测到${temp}℃ > 28℃ -> 自动急速排风 (P5)`, ip: 'DHT11温控' },
+          { id: Date.now().toString(), time: now, action: `[温控+红外联动] DHT11检测到${temp}℃ > 28℃ 且感应到屋内有人 -> 启动排风扇 (P5)`, ip: '温控+PIR' },
           ...prev.slice(0, 9)
         ]);
       }
+    } else if (temp > 28 && !humanPresent && autoFanTriggered) {
+      // 达到28度但屋内无人：自动停机节能
+      setFanOn(false);
+      setAutoFanTriggered(false);
+      setRgbColor('off');
+      setOledMessage(`高温 ${temp}℃但屋内无人: 排风待机节能`);
+      const now = new Date().toLocaleTimeString();
+      setWebLogs((prev) => [
+        { id: Date.now().toString(), time: now, action: `[智能节能] 检测到屋内人员离开 -> 排风扇自动停转 (P5)`, ip: 'PIR红外' },
+        ...prev.slice(0, 9)
+      ]);
     } else if (autoFanTriggered && temp <= 27.5) {
       setFanOn(false);
       setAutoFanTriggered(false);
       setRgbColor('off');
-      setOledMessage('室温恢复正常 · 排风停止');
+      setOledMessage('室温恢复正常 (<=27.5℃) · 排风停止');
     }
-  }, [temp, fanOn, autoFanTriggered]);
+  }, [temp, humanPresent, fanOn, autoFanTriggered]);
 
   // Handle Button A 6-Second Reset (Safety Airbag)
   const triggerButtonAReset = () => {
@@ -514,7 +526,7 @@ export const IoTSimulator: React.FC = () => {
             </div>
 
             {/* Non-Touch Security & Interactive Trigger Bar */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mt-4">
               <button
                 onClick={() => {
                   setInputBuffer(currentPwd);
@@ -524,6 +536,26 @@ export const IoTSimulator: React.FC = () => {
               >
                 <Unlock className="w-4 h-4 text-emerald-400" />
                 <span>一键输密码 ({currentPwd})</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const nextPresence = !humanPresent;
+                  setHumanPresent(nextPresence);
+                  const now = new Date().toLocaleTimeString();
+                  setWebLogs((prev) => [
+                    { id: Date.now().toString(), time: now, action: `[PIR红外感应] 室内状态切换 -> ${nextPresence ? '有人活动' : '室内无人'}`, ip: 'PIR红外' },
+                    ...prev.slice(0, 9)
+                  ]);
+                }}
+                className={`flex items-center justify-center gap-2 p-3 rounded-xl text-xs font-semibold border transition-all active:scale-95 ${
+                  humanPresent
+                    ? 'bg-emerald-600/25 text-emerald-300 border-emerald-500/50'
+                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                }`}
+              >
+                <Radio className={`w-4 h-4 ${humanPresent ? 'text-emerald-400 animate-pulse' : 'text-slate-500'}`} />
+                <span>PIR室内: {humanPresent ? '有人活动' : '室内无人'}</span>
               </button>
 
               <button
@@ -553,7 +585,7 @@ export const IoTSimulator: React.FC = () => {
                 }`}
               >
                 <Flame className="w-4 h-4 text-amber-400" />
-                <span>{temp >= 29 ? '恢复正常室温 (24℃)' : '哈热气 (>28℃排风)'}</span>
+                <span>{temp >= 29 ? '恢复正常室温 (24℃)' : '哈热气 (>28℃)'}</span>
               </button>
 
               <button
@@ -581,7 +613,9 @@ export const IoTSimulator: React.FC = () => {
                   <span className="text-slate-400 flex items-center gap-1">
                     <Thermometer className="w-3.5 h-3.5 text-rose-400" /> DHT11 室内温度调控:
                   </span>
-                  <span className="font-mono text-rose-300 font-bold">{temp} ℃ {temp > 28 && '(>28℃自动排风)'}</span>
+                  <span className="font-mono text-rose-300 font-bold">
+                    {temp} ℃ {temp > 28 && (humanPresent ? '(>28℃且有人:自动排风中)' : '(>28℃但无人:排风待机)')}
+                  </span>
                 </div>
                 <input
                   type="range"
