@@ -11,11 +11,12 @@ export const CodeWorkspace: React.FC = () => {
   const unitTestScripts = {
     keypad: {
       name: 'test_keypad.py',
-      title: '3×4 矩阵智能键盘 (I2C 专用总线) 测试',
-      desc: '插上 4Pin 排线连接拓展板 I2C 座 (SCL=P19, SDA=P20)，0占用GPIO，测试 12 个键位与 123456# 验证',
+      title: '3×4 矩阵键盘与 PCF8574 I2C 总线测试',
+      desc: '键盘 7 根线插 PCF8574 的 P0~P6 (P7空)，PCF8574 4Pin接拓展板 I2C (SCL=P19, SDA=P20)；验证 12 个键位与 123456# 密码',
       code: `# ==============================================================================
 # 单元测试 1：3×4 矩阵键盘 (I2C 总线接口 SCL=P19, SDA=P20) 测试
-# 用途：测试 I2C 接口矩阵键盘是否能被正常扫描识别，验证 12 个键位与出厂密码 123456#
+# 【接线】键盘 7 根排线依次插 PCF8574 的 P0~P6 (P7悬空不接)；
+#        PCF8574 的 4Pin (VCC/GND/SCL/SDA) 接盛思拓展板对应 I2C 接口
 # ==============================================================================
 from mpython import *
 import time
@@ -208,11 +209,11 @@ while True:
     },
     fan_light: {
       name: 'test_fan_light.py',
-      title: '实体客厅吊灯 (P2) 与微型排风扇 (P3) 测试',
-      desc: 'P2接吊灯模块，P3接微型风扇；自动循环测试：仅开灯、仅开扇、全开、全关',
+      title: '实体客厅吊灯 (P2) 与微型排风扇 (P3/M1双模) 测试',
+      desc: 'P2接吊灯模块，两线风扇(黄/橙线)插Parrot背面M1，三线风扇插P3；自动测试全开全关',
       code: `# ==============================================================================
-# 单元测试 4：客厅实体高亮吊灯 (P2) 与智能微型风扇 (P3) 独立测试
-# 用途：测试 P2 实体白光 LED 照亮室内 与 P3 微型直流风扇旋转吹风
+# 单元测试 4：客厅高亮吊灯 (P2) 与微型排风扇 (P3/M1双模) 测试
+# 【两线直流电扇接线】黄线与橙线直接插 Parrot 拓展板背面的【M1】端子两孔！
 # ==============================================================================
 from mpython import *
 import time
@@ -221,20 +222,32 @@ from machine import Pin
 light_pin = Pin(Pin.P2, Pin.OUT)
 fan_pin = Pin(Pin.P3, Pin.OUT)
 
+try:
+    import parrot
+    HAS_PARROT = True
+except:
+    HAS_PARROT = False
+
+def set_fan_motor(state):
+    fan_pin.value(1 if state else 0)
+    if HAS_PARROT:
+        try: parrot.set_speed(parrot.MOTOR_1, 80 if state else 0)
+        except: pass
+
 step = 0
 while True:
     step = (step + 1) % 4
     if step == 0:
-        light_pin.value(1); fan_pin.value(0)
+        light_pin.value(1); set_fan_motor(False)
         oled.fill(0); oled.DispChar("客厅吊灯: [开启]", 15, 20); oled.DispChar("风扇: [关闭]", 20, 40); oled.show()
     elif step == 1:
-        light_pin.value(0); fan_pin.value(1)
+        light_pin.value(0); set_fan_motor(True)
         oled.fill(0); oled.DispChar("客厅吊灯: [关闭]", 15, 20); oled.DispChar("风扇: [吹风中]", 15, 40); oled.show()
     elif step == 2:
-        light_pin.value(1); fan_pin.value(1)
+        light_pin.value(1); set_fan_motor(True)
         oled.fill(0); oled.DispChar("【全开模式】", 20, 20); oled.DispChar("吊灯:亮 风扇:转", 10, 40); oled.show()
     else:
-        light_pin.value(0); fan_pin.value(0)
+        light_pin.value(0); set_fan_motor(False)
         oled.fill(0); oled.DispChar("【节能全关】", 20, 20); oled.DispChar("吊灯:灭 风扇:停", 10, 40); oled.show()
     time.sleep(3)`
     },

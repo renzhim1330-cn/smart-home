@@ -238,13 +238,13 @@ export const HARDWARE_LIST: HardwareItem[] = [
   {
     id: 'hw-keypad',
     name: '3×4 矩阵智能轻触键盘 (I2C 总线款 / PCF8574转接)',
-    spec: '12键 (0~9, *, #)，I2C 工业总线接口 (带 4Pin 防反接线)，支持设置不同地址',
+    spec: '12键 (0~9, *, #)，配 PCF8574 I2C 模块，只需 4Pin 线连拓展板，12 键全部可用',
     quantity: '1 个',
     purpose: '平贴在玄关发泡板立墙，仅占 2 根总线，0 占用普通 GPIO，用于输入门禁密码、按 # 确认、按 * 一键布防与现场改密',
-    pinConnect: '直接接入拓展板 I2C 接口：SCL 接 P19，SDA 接 P20，VCC 接 3.3V/5V，GND 接地',
+    pinConnect: '① 键盘 7 根排线顺次直插 PCF8574 的 P0~P6 (行1~4接P0~P3，列1~3接P4~P6，P7空置)；② PCF8574 的 I2C 4Pin 口接拓展板：SCL接P19，SDA接P20，VCC接3.3V/5V，GND接地',
     estPrice: '¥8 ~ 12',
     searchKeyword: 'I2C 矩阵键盘 12键 PCF8574 创客',
-    avoidPitfall: '选用带 PCF8574 的 I2C 键盘模块（或普通键盘配小黑板转接），接线极为清爽。'
+    avoidPitfall: '接线超简单：键盘 7 根线顺序平插在 PCF8574 排针 P0~P6 上，P7 空着不插；再用 4 根线把模块的 I2C 接到盛思板子 I2C 座。键盘为无源触点，即便插反也绝不烧件，代码自动兼容！'
   },
   {
     id: 'hw-4',
@@ -310,7 +310,7 @@ export const PINOUT_LIST: WiringPin[] = [
     function: 'I2C 总线双向通信 (PCF8574芯片驱动 12 个键位)',
     type: 'I2C',
     vccReq: '3.3V ~ 5V',
-    notes: '仅需 4 根线直插 I2C 接口，0 占用普通 GPIO 引脚！12 键 100% 全部可用'
+    notes: '仅需4根线插拓展板I2C座；键盘7根排线直接平插PCF8574的P0~P6排针(P7空置)，0占用普通GPIO！'
   },
   {
     pin: 'P0 (GPIO 0)',
@@ -435,6 +435,14 @@ fan_pin = Pin(3, Pin.OUT)
 light_pin.value(0)
 fan_pin.value(0)
 
+# 探测并初始化 Parrot 拓展板板载 M1 直流电机驱动 (兼容两线裸电机)
+try:
+    import parrot
+    HAS_PARROT = True
+    parrot.set_speed(parrot.MOTOR_1, 0)
+except Exception:
+    HAS_PARROT = False
+
 # 温湿度 P1 与 人体红外 P5 (P5为标准输入引脚，完美契合PIR)
 dht_dev = dht.DHT11(Pin(1))
 pir_sensor = Pin(5, Pin.IN)
@@ -540,11 +548,16 @@ def set_light(state):
     refresh_dashboard()
 
 def set_fan(state, is_auto=False):
-    """控制智能微型排风扇 (P3)"""
+    """控制智能微型排风扇 (支持 P3 模块引脚与 Parrot M1 电机端子双驱动)"""
     global fan_is_on, auto_fan_active
     fan_is_on = state
     auto_fan_active = is_auto
     fan_pin.value(1 if state else 0)
+    if HAS_PARROT:
+        try:
+            parrot.set_speed(parrot.MOTOR_1, 85 if state else 0)
+        except Exception:
+            pass
     refresh_dashboard()
 
 def open_door_action():

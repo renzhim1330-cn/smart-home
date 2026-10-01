@@ -31,6 +31,14 @@ fan_pin = Pin(3, Pin.OUT)
 light_pin.value(0)
 fan_pin.value(0)
 
+# 探测并初始化 Parrot 拓展板板载 M1 直流电机驱动 (兼容两线裸电机)
+try:
+    import parrot
+    HAS_PARROT = True
+    parrot.set_speed(parrot.MOTOR_1, 0)
+except Exception:
+    HAS_PARROT = False
+
 # 温湿度 P1 与 人体红外 P5 (P5为标准输入引脚，完美契合PIR)
 dht_dev = dht.DHT11(Pin(1))
 pir_sensor = Pin(5, Pin.IN)
@@ -136,11 +144,16 @@ def set_light(state):
     refresh_dashboard()
 
 def set_fan(state, is_auto=False):
-    """控制智能微型排风扇 (P3)"""
+    """控制智能微型排风扇 (支持 P3 模块引脚与 Parrot M1 电机端子双驱动)"""
     global fan_is_on, auto_fan_active
     fan_is_on = state
     auto_fan_active = is_auto
     fan_pin.value(1 if state else 0)
+    if HAS_PARROT:
+        try:
+            parrot.set_speed(parrot.MOTOR_1, 85 if state else 0)
+        except Exception:
+            pass
     refresh_dashboard()
 
 def open_door_action():
