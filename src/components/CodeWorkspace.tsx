@@ -253,94 +253,78 @@ while True:
     },
     fan: {
       name: 'test_fan.py',
-      title: '智能微型排风扇 (Parrot M1) 深度兼容按键/触控调速测试',
-      desc: '按掌控板【A 键】或触碰底部金色【P点】换挡与停转，按【B 键】或【N点】反转风向',
+      title: '智能微型排风扇 (Parrot M1) 纯手动按键调速与停转测试',
+      desc: '按正面 A 键循环换挡与停转(0档停转->1档微风->2档清风->3档狂风->0档停转)；按 B 键反转风向',
       code: `# ==============================================================================
-# 单元测试 4B：智能微型排风扇 (Parrot M1) 深度兼容按键与触摸调速测试
+# 智能微型排风扇：纯手动按 A 键控制 (绝对无任何自动定时器)
+# 接线：电机黄线与橙线插 Parrot 拓展板背面的 M1 端子两孔
+# 掌控板按键：按正面 A 键调速与停转，按 B 键反转风向
 # ==============================================================================
 from mpython import *
 import time
 import parrot
-from machine import Pin
 
-pin_btn_a = Pin(35, Pin.IN)
-pin_btn_b = Pin(27, Pin.IN)
-
-GEAR_NAMES = ["【0档】停转关闭", "【1档】35% 静音微风", "【2档】65% 自然清风", "【3档】100% 强力狂风"]
+GEAR_NAMES = ["【0档 停转】", "【1档 35%微风】", "【2档 65%清风】", "【3档 100%狂风】"]
 GEAR_SPEEDS = [0, 35, 65, 100]
 
-current_gear = 0
+gear = 0
 is_forward = True
 
-def get_btn_a():
-    try:
-        if pin_btn_a.value() == 0: return True
-    except: pass
-    try:
-        if button_a.is_pressed(): return True
-    except: pass
-    try:
-        if touchPad_p.read() < 500: return True
-    except: pass
-    return False
+try:
+    parrot.set_speed(parrot.MOTOR_1, 0)
+except Exception as e:
+    print("M1驱动初始化:", e)
 
-def get_btn_b():
-    try:
-        if pin_btn_b.value() == 0: return True
-    except: pass
-    try:
-        if button_b.is_pressed(): return True
-    except: pass
-    try:
-        if touchPad_n.read() < 500: return True
-    except: pass
-    return False
-
-def apply_fan():
-    base_spd = GEAR_SPEEDS[current_gear]
-    actual_spd = base_spd if is_forward else -base_spd
-    try:
-        parrot.set_speed(parrot.MOTOR_1, actual_spd)
-    except Exception as e:
-        print("驱动异常:", e)
-        
-    oled.fill(0)
-    oled.DispChar("★ 风扇按键调速系统 ★", 5, 0)
-    oled.DispChar(GEAR_NAMES[current_gear], 5, 20)
-    if current_gear == 0:
-        oled.DispChar("按 A 键 / 摸 P ➔ 启动", 5, 38)
-    else:
-        dir_txt = "风向: 正向排风" if is_forward else "风向: 反向抽风"
-        oled.DispChar(dir_txt, 10, 38)
-        
-    bar_w = int(current_gear * (110 / 3))
-    oled.rect(5, 54, 118, 8, 1)
-    if bar_w > 0:
-        oled.fill_rect(7, 56, bar_w, 4, 1)
-    oled.show()
-
-apply_fan()
+oled.fill(0)
+oled.DispChar("★ 纯手动按A键测试 ★", 2, 5)
+oled.DispChar("当前: [0档 停转]", 15, 25)
+oled.DispChar("请按 A 键启动风扇", 10, 45)
+oled.show()
 
 while True:
-    if get_btn_a():
-        current_gear = (current_gear + 1) % len(GEAR_SPEEDS)
-        if current_gear == 0:
-            try: buzzer.pitch(500, 150)
+    if button_a.is_pressed() or button_a.was_pressed():
+        gear = (gear + 1) % len(GEAR_SPEEDS)
+        base_spd = GEAR_SPEEDS[gear]
+        actual_spd = base_spd if is_forward else -base_spd
+        
+        try:
+            parrot.set_speed(parrot.MOTOR_1, actual_spd)
+        except Exception as e:
+            print("电机控制异常:", e)
+        
+        oled.fill(0)
+        oled.DispChar("★ 纯手动按A键测试 ★", 2, 5)
+        oled.DispChar(GEAR_NAMES[gear], 20, 25)
+        if gear == 0:
+            oled.DispChar("已停转! 按A重新启动", 5, 45)
+            try: buzzer.pitch(500, 100)
             except: pass
         else:
-            try: buzzer.pitch(800 + current_gear * 200, 80)
+            dir_str = "(正向)" if is_forward else "(反向)"
+            oled.DispChar("转速: " + str(base_spd) + "% " + dir_str, 8, 45)
+            try: buzzer.pitch(1000, 80)
             except: pass
-        apply_fan()
-        time.sleep(0.4)
+        oled.show()
+        time.sleep(0.3)
         
-    if get_btn_b():
+    if button_b.is_pressed() or button_b.was_pressed():
         is_forward = not is_forward
+        base_spd = GEAR_SPEEDS[gear]
+        actual_spd = base_spd if is_forward else -base_spd
+        try:
+            parrot.set_speed(parrot.MOTOR_1, actual_spd)
+        except Exception as e:
+            pass
+        oled.fill(0)
+        oled.DispChar("★ 切换风向 ★", 25, 5)
+        oled.DispChar("当前风向: " + ("正向排风" if is_forward else "反向抽风"), 5, 25)
+        oled.DispChar(GEAR_NAMES[gear], 20, 45)
+        oled.show()
         try: buzzer.pitch(1400, 100)
         except: pass
-        apply_fan()
-        time.sleep(0.4)
+        time.sleep(0.3)
         
-    time.sleep(0.02)`
+    time.sleep(0.05)`
     },
     voice: {
       name: 'test_voice.py',
