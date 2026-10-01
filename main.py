@@ -25,13 +25,11 @@ from machine import PWM, Pin, UART, I2C
 servo_pin = Pin(0, Pin.OUT)
 servo_pwm = PWM(servo_pin, freq=50)
 
-# 客厅吊灯 P2 与 微型风扇 P3 (纯净数字GPIO，与按键完全隔离)
-light_pin = Pin(2, Pin.OUT)
-fan_pin = Pin(3, Pin.OUT)
+# 客厅吊灯 P16 (全功能双向GPIO输出)
+light_pin = Pin(16, Pin.OUT)
 light_pin.value(0)
-fan_pin.value(0)
 
-# 探测并初始化 Parrot 拓展板板载 M1 直流电机驱动 (兼容两线裸电机)
+# 探测并初始化 Parrot 拓展板板载 M1 直流电机驱动 (两线黄/橙裸电机)
 try:
     import parrot
     HAS_PARROT = True
@@ -137,18 +135,17 @@ def set_servo_angle(angle):
     servo_pwm.duty(duty)
 
 def set_light(state):
-    """控制客厅实体吸顶吊灯 (P2)"""
+    """控制客厅实体吸顶吊灯 (P16)"""
     global light_is_on
     light_is_on = state
     light_pin.value(1 if state else 0)
     refresh_dashboard()
 
 def set_fan(state, is_auto=False):
-    """控制智能微型排风扇 (支持 P3 模块引脚与 Parrot M1 电机端子双驱动)"""
+    """控制智能微型排风扇 (Parrot M1 直流电机驱动)"""
     global fan_is_on, auto_fan_active
     fan_is_on = state
     auto_fan_active = is_auto
-    fan_pin.value(1 if state else 0)
     if HAS_PARROT:
         try:
             parrot.set_speed(parrot.MOTOR_1, 85 if state else 0)

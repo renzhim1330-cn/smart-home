@@ -208,18 +208,18 @@ export const HARDWARE_LIST: HardwareItem[] = [
     spec: '5V 白光高亮 LED 模块，带白色半球柔光罩与限流电阻',
     quantity: '1 个',
     purpose: '贴在发泡板斜屋顶内侧正中央，声控或手机点按时整间客厅倾泻通明白光',
-    pinConnect: '信号线接拓展板 P2，电源VCC接 5V，GND接地',
+    pinConnect: '信号线接拓展板 P16 (全功能双向GPIO)，电源VCC接 5V，GND接地',
     estPrice: '¥2 ~ 4',
     searchKeyword: '创客 5V 白光 LED 模块 柔光 吊灯',
     avoidPitfall: '选择自带限流电阻的 LED 模块，不要直接把裸 LED 灯珠插在引脚上防止过流。'
   },
   {
     id: 'hw-fan',
-    name: '5V 微型直流风扇排风模块',
-    spec: '5V 直流微型电机，带软质安全扇叶，静音安全不打手',
+    name: '微型直流排风扇 (带两线电机与软扇叶)',
+    spec: '两线直流微型电机 (黄线+橙线)，带软质安全扇叶，静音安全不打手',
     quantity: '1 个',
     purpose: '安装在沙盘后墙上方排风孔，语音喊话启停，或当室内有人且温湿度 >28℃ 时自动开启急速排风降温（无人不开启）',
-    pinConnect: '控制信号线接拓展板 P3，电源接 5V 与 GND',
+    pinConnect: '黄线与橙线直接插 Parrot 拓展板背面的 M1 两孔电机端子中',
     estPrice: '¥6 ~ 9',
     searchKeyword: '5V 直流电机风扇模块 软扇叶 创客',
     avoidPitfall: '认准带软质塑胶扇叶的小风扇，转动时用手碰到也不会受伤，确保少儿比赛安全。'
@@ -429,13 +429,11 @@ from machine import PWM, Pin, UART, I2C
 servo_pin = Pin(0, Pin.OUT)
 servo_pwm = PWM(servo_pin, freq=50)
 
-# 客厅吊灯 P2 与 微型风扇 P3 (纯净数字GPIO，与按键完全隔离)
-light_pin = Pin(2, Pin.OUT)
-fan_pin = Pin(3, Pin.OUT)
+# 客厅吊灯 P16 (全功能双向GPIO输出)
+light_pin = Pin(16, Pin.OUT)
 light_pin.value(0)
-fan_pin.value(0)
 
-# 探测并初始化 Parrot 拓展板板载 M1 直流电机驱动 (兼容两线裸电机)
+# 探测并初始化 Parrot 拓展板板载 M1 直流电机驱动 (两线黄/橙裸电机)
 try:
     import parrot
     HAS_PARROT = True
@@ -541,18 +539,17 @@ def set_servo_angle(angle):
     servo_pwm.duty(duty)
 
 def set_light(state):
-    """控制客厅实体吸顶吊灯 (P2)"""
+    """控制客厅实体吸顶吊灯 (P16)"""
     global light_is_on
     light_is_on = state
     light_pin.value(1 if state else 0)
     refresh_dashboard()
 
 def set_fan(state, is_auto=False):
-    """控制智能微型排风扇 (支持 P3 模块引脚与 Parrot M1 电机端子双驱动)"""
+    """控制智能微型排风扇 (Parrot M1 直流电机驱动)"""
     global fan_is_on, auto_fan_active
     fan_is_on = state
     auto_fan_active = is_auto
-    fan_pin.value(1 if state else 0)
     if HAS_PARROT:
         try:
             parrot.set_speed(parrot.MOTOR_1, 85 if state else 0)

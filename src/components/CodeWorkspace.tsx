@@ -209,22 +209,22 @@ while True:
     },
     light: {
       name: 'test_light.py',
-      title: '客厅实体高亮白色吊灯 (P2) 独立测试',
-      desc: '信号线接左侧 P2，电源接 5V，地线接 GND；2秒周期自动点亮与熄灭，全屋照明测试',
+      title: '客厅实体高亮白色吊灯 (P16) 独立测试',
+      desc: '信号线接右侧 P16 (全功能双向GPIO)，电源接 5V，地线接 GND；2秒周期自动点亮与熄灭',
       code: `# ==============================================================================
-# 单元测试 4A：客厅实体高亮吊灯 (P2) 独立测试脚本
-# 用途：测试 P2 实体白光 LED 吊灯亮灭，验证高电平驱动与夜间全屋照明效果
-# 【接线】信号线接拓展板左侧 P2 (黄针S)，电源线接 5V (红针V)，地线接 GND (黑针G)
+# 单元测试 4A：客厅实体高亮吊灯 (P16) 独立测试脚本
+# 用途：测试 P16 实体白光 LED 吊灯亮灭，验证高电平驱动与夜间全屋照明效果
+# 【接线】信号线接拓展板右侧 P16 (黄针S)，电源线接 5V (红针V)，地线接 GND (黑针G)
 # ==============================================================================
 from mpython import *
 import time
 from machine import Pin
 
-light_pin = Pin(Pin.P2, Pin.OUT)
+light_pin = Pin(Pin.P16, Pin.OUT)
 
 oled.fill(0)
 oled.DispChar("客厅吊灯独立测试", 12, 12)
-oled.DispChar("引脚: P2 (5V/GND)", 10, 32)
+oled.DispChar("引脚: P16 (5V/GND)", 8, 32)
 oled.show()
 time.sleep(1.5)
 
@@ -253,35 +253,28 @@ while True:
     },
     fan: {
       name: 'test_fan.py',
-      title: '智能微型排风扇 (Parrot M1/P3) 独立测试',
+      title: '智能微型排风扇 (Parrot M1 直流电机) 独立测试',
       desc: '两线风扇(黄/橙线)插Parrot背面M1端子；自动测试高速排风(85%)、微风(45%)与停转',
       code: `# ==============================================================================
-# 单元测试 4B：智能微型排风扇 (Parrot M1 / P3 双模) 独立测试脚本
+# 单元测试 4B：智能微型排风扇 (Parrot M1 直流电机) 独立测试脚本
 # 用途：测试微型排风扇电机旋转吹风，验证高温强力排风降温功能
 # 【接线】黄色线与橙色线直接插 Parrot 拓展板背面的【M1】端子两孔！
 # ==============================================================================
 from mpython import *
 import time
-from machine import Pin
-
-fan_pin = Pin(Pin.P3, Pin.OUT)
-fan_pin.value(0)
-
-try:
-    import parrot
-    HAS_PARROT = True
-except:
-    HAS_PARROT = False
+import parrot
 
 def set_fan(speed):
-    fan_pin.value(1 if speed > 0 else 0)
-    if HAS_PARROT:
-        try: parrot.set_speed(parrot.MOTOR_1, speed)
-        except: pass
+    try:
+        parrot.set_speed(parrot.MOTOR_1, speed)
+    except Exception as e:
+        print("M1驱动异常:", e)
+
+set_fan(0)
 
 oled.fill(0)
 oled.DispChar("智能风扇独立测试", 12, 12)
-oled.DispChar("接口: M1端子 / P3", 8, 32)
+oled.DispChar("接口: Parrot M1端子", 5, 32)
 oled.show()
 time.sleep(1.5)
 

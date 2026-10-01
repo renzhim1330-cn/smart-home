@@ -1,41 +1,28 @@
 # ==============================================================================
-# 单元测试 4B：智能微型排风扇 (Parrot M1 / P3 双模) 独立测试脚本
+# 单元测试 4B：智能微型排风扇 (Parrot M1 直流电机) 独立测试脚本
 # 用途：测试微型排风扇电机旋转吹风，验证高温强力排风降温功能
 #
 # 【两线直流电扇接线 (黄线 + 橙线)】
 # - 直接将电机的黄色线与橙色线插入 Parrot 拓展板背面的【M1】端子两孔！
 # - 顺时针吹风：若风向吸风，将两根线对调，或在代码中设为 -85 即可反向吹风！
-#
-# 【三线风扇模块接线 (若使用带驱动底板的模块)】
-# - 信号线接左侧 P3，VCC 接 5V，GND 接地
 # ==============================================================================
 from mpython import *
 import time
-from machine import Pin
-
-# 1. 初始化通用 P3 数字引脚 (用于兼容三线风扇模块)
-fan_pin = Pin(Pin.P3, Pin.OUT)
-fan_pin.value(0)
-
-# 2. 探测 Parrot 拓展板板载 M1 直流电机驱动 (用于两线黄/橙裸电机)
-try:
-    import parrot
-    HAS_PARROT = True
-except Exception:
-    HAS_PARROT = False
+import parrot
 
 def set_fan(speed):
     """设置风扇转速 (0 停止，正数高速排风)"""
-    fan_pin.value(1 if speed > 0 else 0)
-    if HAS_PARROT:
-        try:
-            parrot.set_speed(parrot.MOTOR_1, speed)
-        except Exception:
-            pass
+    try:
+        parrot.set_speed(parrot.MOTOR_1, speed)
+    except Exception as e:
+        print("M1电机驱动异常:", e)
+
+# 初始停转
+set_fan(0)
 
 oled.fill(0)
 oled.DispChar("智能风扇独立测试", 12, 12)
-oled.DispChar("接口: M1端子 / P3", 8, 32)
+oled.DispChar("接口: Parrot M1端子", 5, 32)
 oled.show()
 time.sleep(1.5)
 
