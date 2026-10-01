@@ -1,67 +1,79 @@
 # ==============================================================================
-# 单元测试 4B：智能微型排风扇 (Parrot M1 直流电机) 独立测试脚本
-# 用途：测试微型排风扇电机旋转吹风，验证高温强力排风降温功能
+# 单元测试 4B：智能微型排风扇 (Parrot M1) 按键交互调速测试
+# 用途：按 A 键循环换挡与停转，按 B 键切换吹风/排风方向
 #
-# 【两线直流电扇接线 (黄线 + 橙线)】
-# - 直接将电机的黄色线与橙色线插入 Parrot 拓展板背面的【M1】端子两孔！
-# - 顺时针吹风：若风向吸风，将两根线对调，或在代码中设为 -85 即可反向吹风！
+# 【A 键换挡循环口诀】
+# 开机默认停转 ➔ 按A [1挡 35%微风] ➔ 按A [2挡 65%清风] ➔ 按A [3挡 100%狂风] ➔ 按A [停转关闭] ➔ 按A [重新开启]
 # ==============================================================================
 from mpython import *
 import time
 import parrot
 
-def set_fan(speed):
-    """设置风扇转速 (0 停止，正数高速排风)"""
-    try:
-        parrot.set_speed(parrot.MOTOR_1, speed)
-    except Exception as e:
-        print("M1电机驱动异常:", e)
+# 预设 4 个风速档位 (0: 停转关闭, 1: 35%微风, 2: 65%清风, 3: 100%暴风)
+GEAR_NAMES = ["【0档】停转关闭", "【1档】35% 静音微风", "【2档】65% 自然清风", "【3档】100% 强力暴风"]
+GEAR_SPEEDS = [0, 35, 65, 100]
 
-# 初始停转
-set_fan(0)
+current_gear = 0
+is_forward = True  # True: 正向排风, False: 反向抽风
 
-oled.fill(0)
-oled.DispChar("智能风扇独立测试", 12, 12)
-oled.DispChar("接口: Parrot M1端子", 5, 32)
-oled.show()
-time.sleep(1.5)
-
-cycle = 0
-while True:
-    cycle = (cycle + 1) % 3
+def apply_fan_speed():
+    """根据档位与方向驱动电机，并在屏幕上刷新显示"""
+    base_spd = GEAR_SPEEDS[current_gear]
+    actual_spd = base_spd if is_forward else -base_spd
     
-    if cycle == 0:
-        # 1. 强劲全速排风 (85% 速度)
-        set_fan(85)
-        oled.fill(0)
-        oled.DispChar("★ 风扇: [高速排风] ★", 2, 12)
-        oled.DispChar("转速: 85% 强力吹风", 10, 30)
-        oled.DispChar("手感应出风口风向", 15, 48)
-        oled.show()
-        try: buzzer.pitch(1200, 100)
-        except: pass
-        time.sleep(3.5)
+    try:
+        parrot.set_speed(parrot.MOTOR_1, actual_spd)
+    except Exception as e:
+        print("驱动异常:", e)
         
-    elif cycle == 1:
-        # 2. 柔和微风排风 (45% 速度)
-        set_fan(45)
-        oled.fill(0)
-        oled.DispChar("● 风扇: [微风排风] ●", 2, 12)
-        oled.DispChar("转速: 45% 静音微风", 10, 30)
-        oled.DispChar("绿色节能低噪音", 18, 48)
-        oled.show()
-        try: buzzer.pitch(900, 80)
-        except: pass
-        time.sleep(3.5)
-        
+    # OLED 屏幕图形化显示
+    oled.fill(0)
+    oled.DispChar("★ 风扇按键调速测试 ★", 2, 0)
+    oled.DispChar(GEAR_NAMES[current_gear], 5, 20)
+    
+    if current_gear == 0:
+        oled.DispChar("按 A 键 ➔ 启动 1 档", 5, 38)
     else:
-        # 3. 停转关闭
-        set_fan(0)
-        oled.fill(0)
-        oled.DispChar("○ 风扇: [停转关闭] ○", 2, 12)
-        oled.DispChar("待机休眠 0 功耗", 15, 30)
-        oled.DispChar("等待温湿触发排风", 12, 48)
-        oled.show()
-        try: buzzer.pitch(600, 60)
+        dir_str = "风向: 正向排风" if is_forward else "风向: 反向抽风"
+        oled.DispChar(dir_str, 5, 38)
+    
+    # 底部绘制风速进度条
+    bar_width = int(current_gear * (110 / 3))
+    oled.rect(5, 54, 118, 8, 1)
+    if bar_width > 0:
+        oled.fill_rect(7, 56, bar_width, 4, 1)
+    oled.show()
+
+# 初始停转状态
+apply_fan_speed()
+
+print("已就绪！")
+print("👉 按一下【A 键】：升档吹风")
+print("👉 吹到第 3 档再按一下【A 键】：立刻停转！停转后再按 A 键又会重新启动！")
+print("👉 按一下【B 键】：切换吹风/排风方向")
+
+while True:
+    # 检测 A 键按下（换挡 / 停转 / 重新启动）
+    if button_a.value() == 0:
+        current_gear = (current_gear + 1) % len(GEAR_SPEEDS)
+        
+        # 换挡蜂鸣器音效（停转时低音，升档时清脆高音）
+        if current_gear == 0:
+            try: buzzer.pitch(500, 150)
+            except: pass
+        else:
+            try: buzzer.pitch(800 + current_gear * 200, 80)
+            except: pass
+            
+        apply_fan_speed()
+        time.sleep(0.3)  # 按键防抖延时
+        
+    # 检测 B 键按下（切换风向）
+    if button_b.value() == 0:
+        is_forward = not is_forward
+        try: buzzer.pitch(1400, 100)
         except: pass
-        time.sleep(2.5)
+        apply_fan_speed()
+        time.sleep(0.3)  # 按键防抖延时
+        
+    time.sleep(0.05)

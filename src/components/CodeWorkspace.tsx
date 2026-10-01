@@ -253,61 +253,70 @@ while True:
     },
     fan: {
       name: 'test_fan.py',
-      title: '智能微型排风扇 (Parrot M1 直流电机) 独立测试',
-      desc: '两线风扇(黄/橙线)插Parrot背面M1端子；自动测试高速排风(85%)、微风(45%)与停转',
+      title: '智能微型排风扇 (Parrot M1) 按键调速与停转测试',
+      desc: '按掌控板 A 键循环升档与停转(0档停转->1档微风->2档清风->3档狂风->0档停转)；按 B 键反转风向',
       code: `# ==============================================================================
-# 单元测试 4B：智能微型排风扇 (Parrot M1 直流电机) 独立测试脚本
-# 用途：测试微型排风扇电机旋转吹风，验证高温强力排风降温功能
-# 【接线】黄色线与橙色线直接插 Parrot 拓展板背面的【M1】端子两孔！
+# 单元测试 4B：智能微型排风扇 (Parrot M1) 按键交互调速测试
+# 用途：按 A 键循环换挡与停转，按 B 键切换吹风/排风方向
+#
+# 【A 键换挡循环口诀】
+# 开机默认停转 ➔ 按A [1挡 35%微风] ➔ 按A [2挡 65%清风] ➔ 按A [3挡 100%狂风] ➔ 按A [停转关闭] ➔ 按A [重新开启]
 # ==============================================================================
 from mpython import *
 import time
 import parrot
 
-def set_fan(speed):
+GEAR_NAMES = ["【0档】停转关闭", "【1档】35% 静音微风", "【2档】65% 自然清风", "【3档】100% 强力暴风"]
+GEAR_SPEEDS = [0, 35, 65, 100]
+
+current_gear = 0
+is_forward = True
+
+def apply_fan_speed():
+    base_spd = GEAR_SPEEDS[current_gear]
+    actual_spd = base_spd if is_forward else -base_spd
     try:
-        parrot.set_speed(parrot.MOTOR_1, speed)
+        parrot.set_speed(parrot.MOTOR_1, actual_spd)
     except Exception as e:
-        print("M1驱动异常:", e)
-
-set_fan(0)
-
-oled.fill(0)
-oled.DispChar("智能风扇独立测试", 12, 12)
-oled.DispChar("接口: Parrot M1端子", 5, 32)
-oled.show()
-time.sleep(1.5)
-
-cycle = 0
-while True:
-    cycle = (cycle + 1) % 3
-    if cycle == 0:
-        set_fan(85)
-        oled.fill(0)
-        oled.DispChar("★ 风扇: [高速排风] ★", 2, 15)
-        oled.DispChar("转速: 85% 强力吹风", 10, 35)
-        oled.show()
-        try: buzzer.pitch(1200, 100)
-        except: pass
-        time.sleep(3.5)
-    elif cycle == 1:
-        set_fan(45)
-        oled.fill(0)
-        oled.DispChar("● 风扇: [微风排风] ●", 2, 15)
-        oled.DispChar("转速: 45% 静音微风", 10, 35)
-        oled.show()
-        try: buzzer.pitch(900, 80)
-        except: pass
-        time.sleep(3.5)
+        print("驱动异常:", e)
+        
+    oled.fill(0)
+    oled.DispChar("★ 风扇按键调速测试 ★", 2, 0)
+    oled.DispChar(GEAR_NAMES[current_gear], 5, 20)
+    if current_gear == 0:
+        oled.DispChar("按 A 键 ➔ 启动 1 档", 5, 38)
     else:
-        set_fan(0)
-        oled.fill(0)
-        oled.DispChar("○ 风扇: [停转关闭] ○", 2, 15)
-        oled.DispChar("待机休眠 0 功耗", 15, 35)
-        oled.show()
-        try: buzzer.pitch(600, 60)
+        dir_str = "风向: 正向排风" if is_forward else "风向: 反向抽风"
+        oled.DispChar(dir_str, 5, 38)
+    
+    bar_width = int(current_gear * (110 / 3))
+    oled.rect(5, 54, 118, 8, 1)
+    if bar_width > 0:
+        oled.fill_rect(7, 56, bar_width, 4, 1)
+    oled.show()
+
+apply_fan_speed()
+
+while True:
+    if button_a.value() == 0:
+        current_gear = (current_gear + 1) % len(GEAR_SPEEDS)
+        if current_gear == 0:
+            try: buzzer.pitch(500, 150)
+            except: pass
+        else:
+            try: buzzer.pitch(800 + current_gear * 200, 80)
+            except: pass
+        apply_fan_speed()
+        time.sleep(0.3)
+        
+    if button_b.value() == 0:
+        is_forward = not is_forward
+        try: buzzer.pitch(1400, 100)
         except: pass
-        time.sleep(2.5)`
+        apply_fan_speed()
+        time.sleep(0.3)
+        
+    time.sleep(0.05)`
     },
     voice: {
       name: 'test_voice.py',
