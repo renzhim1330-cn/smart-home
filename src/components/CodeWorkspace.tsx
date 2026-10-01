@@ -253,21 +253,21 @@ while True:
     },
     fan: {
       name: 'test_fan.py',
-      title: '智能微型排风扇 (Parrot M1) 按键/触控精准调速测试',
-      desc: '按 A 键或摸金色 P 点调速与停转(0档->1档->2档->3档->0档)；按 B 键或摸 N 点反向；边沿跳变触发',
+      title: '智能微型排风扇 (Parrot M1) 2档精准调速测试',
+      desc: '按 A 键或摸金色 P 点调速与停转(0档停转->1档50%舒适风->2档100%强风->0档停转)；按 B 键或摸 N 点反向',
       code: `# ==============================================================================
-# 智能微型排风扇：掌控板按键/触控精准边沿调速系统
+# 智能微型排风扇：掌控板按键/触控 2 档精准调速系统
 # 接线：电机黄线与橙线插 Parrot 拓展板背面的 M1 端子两孔
 # 掌控板操作：
-# - 按【A 键】或触碰金色【P 触控点】：循环升档调速与停转 (0档->1档->2档->3档->0档)
+# - 按【A 键】或触碰金色【P 触控点】：循环升档与停转 (0档停转 -> 1档50%舒适风 -> 2档100%强风 -> 0档停转)
 # - 按【B 键】或触碰金色【N 触控点】：一键切换排风/抽风方向
 # ==============================================================================
 from mpython import *
 import time
 import parrot
 
-GEAR_NAMES = ["【0档 彻底停转】", "【1档 35% 静音微风】", "【2档 65% 自然清风】", "【3档 100% 强力狂风】"]
-GEAR_SPEEDS = [0, 35, 65, 100]
+GEAR_NAMES = ["【0档 彻底停转】", "【1档 50% 舒适排风】", "【2档 100% 强力暴风】"]
+GEAR_SPEEDS = [0, 50, 100]
 
 gear = 0
 is_forward = True
@@ -302,9 +302,8 @@ def is_b_active():
     return False
 
 def refresh_screen():
-    base_spd = GEAR_SPEEDS[gear]
     oled.fill(0)
-    oled.DispChar("★ 智能风扇按键测试 ★", 5, 2)
+    oled.DispChar("★ 智能风扇2档调速 ★", 5, 2)
     oled.DispChar(GEAR_NAMES[gear], 10, 20)
     if gear == 0:
         oled.DispChar("按 A 键 / 摸 P ➔ 启动", 5, 38)
@@ -312,7 +311,7 @@ def refresh_screen():
         dir_txt = "风向: 正向排风" if is_forward else "风向: 反向抽风"
         oled.DispChar(dir_txt, 10, 38)
         
-    bar_w = int(gear * (110 / 3))
+    bar_w = int(gear * (110 / 2))
     oled.rect(5, 54, 118, 8, 1)
     if bar_w > 0:
         oled.fill_rect(7, 56, bar_w, 4, 1)
@@ -345,9 +344,9 @@ while True:
             except: pass
         else:
             print(">>> [操作成功] 切换到:", GEAR_NAMES[gear], "| 实际转速:", actual_spd)
-            try: buzzer.pitch(800 + gear * 200, 80)
+            try: buzzer.pitch(800 + gear * 300, 80)
             except: pass
-        time.sleep(0.1)
+        time.sleep(0.12)
         
     if not last_b and curr_b:
         is_forward = not is_forward
@@ -361,7 +360,7 @@ while True:
         print(">>> [操作成功] 切换风向为:", "正向排风" if is_forward else "反向抽风")
         try: buzzer.pitch(1400, 100)
         except: pass
-        time.sleep(0.1)
+        time.sleep(0.12)
         
     last_a = curr_a
     last_b = curr_b
