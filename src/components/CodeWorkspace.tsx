@@ -6,7 +6,7 @@ export const CodeWorkspace: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<'main_code' | 'vscode_setup' | 'unit_tests' | 'ai_prompts'>('vscode_setup');
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState<string | null>(null);
-  const [activeUnitTest, setActiveUnitTest] = useState<'keypad' | 'servo' | 'sensors' | 'fan_light' | 'voice'>('keypad');
+  const [activeUnitTest, setActiveUnitTest] = useState<'keypad' | 'servo' | 'sensors' | 'light' | 'fan' | 'voice'>('keypad');
 
   const unitTestScripts = {
     keypad: {
@@ -207,20 +207,65 @@ while True:
     oled.show()
     time.sleep(1.5)`
     },
-    fan_light: {
-      name: 'test_fan_light.py',
-      title: '实体客厅吊灯 (P2) 与微型排风扇 (P3/M1双模) 测试',
-      desc: 'P2接吊灯模块，两线风扇(黄/橙线)插Parrot背面M1，三线风扇插P3；自动测试全开全关',
+    light: {
+      name: 'test_light.py',
+      title: '客厅实体高亮白色吊灯 (P2) 独立测试',
+      desc: '信号线接左侧 P2，电源接 5V，地线接 GND；2秒周期自动点亮与熄灭，全屋照明测试',
       code: `# ==============================================================================
-# 单元测试 4：客厅高亮吊灯 (P2) 与微型排风扇 (P3/M1双模) 测试
-# 【两线直流电扇接线】黄线与橙线直接插 Parrot 拓展板背面的【M1】端子两孔！
+# 单元测试 4A：客厅实体高亮吊灯 (P2) 独立测试脚本
+# 用途：测试 P2 实体白光 LED 吊灯亮灭，验证高电平驱动与夜间全屋照明效果
+# 【接线】信号线接拓展板左侧 P2 (黄针S)，电源线接 5V (红针V)，地线接 GND (黑针G)
 # ==============================================================================
 from mpython import *
 import time
 from machine import Pin
 
 light_pin = Pin(Pin.P2, Pin.OUT)
+
+oled.fill(0)
+oled.DispChar("客厅吊灯独立测试", 12, 12)
+oled.DispChar("引脚: P2 (5V/GND)", 10, 32)
+oled.show()
+time.sleep(1.5)
+
+state = False
+counter = 0
+while True:
+    state = not state
+    counter += 1
+    if state:
+        light_pin.value(1)
+        oled.fill(0)
+        oled.DispChar("★ 客厅吊灯: [开启] ★", 5, 15)
+        oled.DispChar("通明照亮整间屋", 20, 35)
+        oled.show()
+        try: buzzer.pitch(1000, 100)
+        except: pass
+    else:
+        light_pin.value(0)
+        oled.fill(0)
+        oled.DispChar("☆ 客厅吊灯: [关闭] ☆", 5, 15)
+        oled.DispChar("节能待机熄灭", 25, 35)
+        oled.show()
+        try: buzzer.pitch(600, 80)
+        except: pass
+    time.sleep(2)`
+    },
+    fan: {
+      name: 'test_fan.py',
+      title: '智能微型排风扇 (Parrot M1/P3) 独立测试',
+      desc: '两线风扇(黄/橙线)插Parrot背面M1端子；自动测试高速排风(85%)、微风(45%)与停转',
+      code: `# ==============================================================================
+# 单元测试 4B：智能微型排风扇 (Parrot M1 / P3 双模) 独立测试脚本
+# 用途：测试微型排风扇电机旋转吹风，验证高温强力排风降温功能
+# 【接线】黄色线与橙色线直接插 Parrot 拓展板背面的【M1】端子两孔！
+# ==============================================================================
+from mpython import *
+import time
+from machine import Pin
+
 fan_pin = Pin(Pin.P3, Pin.OUT)
+fan_pin.value(0)
 
 try:
     import parrot
@@ -228,28 +273,48 @@ try:
 except:
     HAS_PARROT = False
 
-def set_fan_motor(state):
-    fan_pin.value(1 if state else 0)
+def set_fan(speed):
+    fan_pin.value(1 if speed > 0 else 0)
     if HAS_PARROT:
-        try: parrot.set_speed(parrot.MOTOR_1, 80 if state else 0)
+        try: parrot.set_speed(parrot.MOTOR_1, speed)
         except: pass
 
-step = 0
+oled.fill(0)
+oled.DispChar("智能风扇独立测试", 12, 12)
+oled.DispChar("接口: M1端子 / P3", 8, 32)
+oled.show()
+time.sleep(1.5)
+
+cycle = 0
 while True:
-    step = (step + 1) % 4
-    if step == 0:
-        light_pin.value(1); set_fan_motor(False)
-        oled.fill(0); oled.DispChar("客厅吊灯: [开启]", 15, 20); oled.DispChar("风扇: [关闭]", 20, 40); oled.show()
-    elif step == 1:
-        light_pin.value(0); set_fan_motor(True)
-        oled.fill(0); oled.DispChar("客厅吊灯: [关闭]", 15, 20); oled.DispChar("风扇: [吹风中]", 15, 40); oled.show()
-    elif step == 2:
-        light_pin.value(1); set_fan_motor(True)
-        oled.fill(0); oled.DispChar("【全开模式】", 20, 20); oled.DispChar("吊灯:亮 风扇:转", 10, 40); oled.show()
+    cycle = (cycle + 1) % 3
+    if cycle == 0:
+        set_fan(85)
+        oled.fill(0)
+        oled.DispChar("★ 风扇: [高速排风] ★", 2, 15)
+        oled.DispChar("转速: 85% 强力吹风", 10, 35)
+        oled.show()
+        try: buzzer.pitch(1200, 100)
+        except: pass
+        time.sleep(3.5)
+    elif cycle == 1:
+        set_fan(45)
+        oled.fill(0)
+        oled.DispChar("● 风扇: [微风排风] ●", 2, 15)
+        oled.DispChar("转速: 45% 静音微风", 10, 35)
+        oled.show()
+        try: buzzer.pitch(900, 80)
+        except: pass
+        time.sleep(3.5)
     else:
-        light_pin.value(0); set_fan_motor(False)
-        oled.fill(0); oled.DispChar("【节能全关】", 20, 20); oled.DispChar("吊灯:灭 风扇:停", 10, 40); oled.show()
-    time.sleep(3)`
+        set_fan(0)
+        oled.fill(0)
+        oled.DispChar("○ 风扇: [停转关闭] ○", 2, 15)
+        oled.DispChar("待机休眠 0 功耗", 15, 35)
+        oled.show()
+        try: buzzer.pitch(600, 60)
+        except: pass
+        time.sleep(2.5)`
     },
     voice: {
       name: 'test_voice.py',
@@ -366,7 +431,7 @@ while True:
               activeSubTab === 'unit_tests' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Terminal className="w-3.5 h-3.5" /> 门外汉独立测试脚本 (3个)
+            <Terminal className="w-3.5 h-3.5" /> 门外汉独立测试脚本 (6个)
           </button>
           <button
             onClick={() => setActiveSubTab('main_code')}
@@ -401,7 +466,7 @@ while True:
             </div>
 
             <div className="flex flex-wrap bg-slate-950 p-1 rounded-xl border border-slate-800 gap-1">
-              {(['keypad', 'servo', 'sensors', 'fan_light', 'voice'] as const).map((key) => (
+              {(['keypad', 'servo', 'sensors', 'light', 'fan', 'voice'] as const).map((key) => (
                 <button
                   key={key}
                   onClick={() => setActiveUnitTest(key)}
