@@ -253,16 +253,20 @@ while True:
     },
     fan: {
       name: 'test_fan.py',
-      title: '智能微型排风扇 (Parrot M1) 纯手动按键调速与停转测试',
-      desc: '按正面 A 键循环换挡与停转(0档停转->1档微风->2档清风->3档狂风->0档停转)；按 B 键反转风向',
+      title: '智能微型排风扇 (Parrot M1) 物理边沿跳变按键测试',
+      desc: '按正面 A 键严格单次跳变调速与停转；按 B 键反转风向；彻底消除自动轮播死循环',
       code: `# ==============================================================================
-# 智能微型排风扇：纯手动按 A 键控制 (绝对无任何自动定时器)
+# 智能微型排风扇：物理边沿跳变按键调速 (彻底根除 was_pressed 恒真死循环)
 # 接线：电机黄线与橙线插 Parrot 拓展板背面的 M1 端子两孔
 # 掌控板按键：按正面 A 键调速与停转，按 B 键反转风向
 # ==============================================================================
 from mpython import *
 import time
 import parrot
+from machine import Pin
+
+pin_a = Pin(35, Pin.IN)
+pin_b = Pin(27, Pin.IN)
 
 GEAR_NAMES = ["【0档 停转】", "【1档 35%微风】", "【2档 65%清风】", "【3档 100%狂风】"]
 GEAR_SPEEDS = [0, 35, 65, 100]
@@ -275,14 +279,20 @@ try:
 except Exception as e:
     print("M1驱动初始化:", e)
 
+last_a = pin_a.value()
+last_b = pin_b.value()
+
 oled.fill(0)
-oled.DispChar("★ 纯手动按A键测试 ★", 2, 5)
+oled.DispChar("★ 物理边沿按键测试 ★", 5, 5)
 oled.DispChar("当前: [0档 停转]", 15, 25)
-oled.DispChar("请按 A 键启动风扇", 10, 45)
+oled.DispChar("静止等待按A键...", 10, 45)
 oled.show()
 
 while True:
-    if button_a.is_pressed() or button_a.was_pressed():
+    curr_a = pin_a.value()
+    curr_b = pin_b.value()
+    
+    if last_a == 1 and curr_a == 0:
         gear = (gear + 1) % len(GEAR_SPEEDS)
         base_spd = GEAR_SPEEDS[gear]
         actual_spd = base_spd if is_forward else -base_spd
@@ -293,7 +303,7 @@ while True:
             print("电机控制异常:", e)
         
         oled.fill(0)
-        oled.DispChar("★ 纯手动按A键测试 ★", 2, 5)
+        oled.DispChar("★ 物理边沿按键测试 ★", 5, 5)
         oled.DispChar(GEAR_NAMES[gear], 20, 25)
         if gear == 0:
             oled.DispChar("已停转! 按A重新启动", 5, 45)
@@ -305,9 +315,10 @@ while True:
             try: buzzer.pitch(1000, 80)
             except: pass
         oled.show()
-        time.sleep(0.3)
+        print(">>> [真按键] 成功触发 A 键！切换为:", GEAR_NAMES[gear])
+        time.sleep(0.15)
         
-    if button_b.is_pressed() or button_b.was_pressed():
+    if last_b == 1 and curr_b == 0:
         is_forward = not is_forward
         base_spd = GEAR_SPEEDS[gear]
         actual_spd = base_spd if is_forward else -base_spd
@@ -322,9 +333,12 @@ while True:
         oled.show()
         try: buzzer.pitch(1400, 100)
         except: pass
-        time.sleep(0.3)
+        print(">>> [真按键] 成功触发 B 键！切换风向为:", "正向排风" if is_forward else "反向抽风")
+        time.sleep(0.15)
         
-    time.sleep(0.05)`
+    last_a = curr_a
+    last_b = curr_b
+    time.sleep(0.02)`
     },
     voice: {
       name: 'test_voice.py',
