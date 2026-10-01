@@ -1,18 +1,18 @@
 # ==============================================================================
-# 单元测试 4：客厅实体吊灯 (P11) 与智能微型电扇 (P5) 独立控制测试
-# 用途：测试 P11 实体 LED 亮灭 与 P5 微型直流风扇旋转启停
+# 单元测试 4：客厅实体高亮吊灯 (P2) 与智能微型风扇 (P3) 独立控制测试
+# 用途：测试 P2 实体 LED 亮灭 与 P3 微型直流风扇旋转吹风 (真实引脚版)
 # ==============================================================================
 from mpython import *
 import time
 from machine import Pin
 
-# 初始化客厅吊灯 (P11) 与风扇电机 (P5)
-light_pin = Pin(Pin.P11, Pin.OUT)
-fan_pin = Pin(Pin.P5, Pin.OUT)
+# 初始化客厅吊灯 (P2) 与微型风扇电机 (P3)
+light_pin = Pin(Pin.P2, Pin.OUT)
+fan_pin = Pin(Pin.P3, Pin.OUT)
 
 oled.fill(0)
 oled.DispChar("吊灯与风扇单元测试", 8, 15)
-oled.DispChar("P11:吊灯  P5:风扇", 10, 35)
+oled.DispChar("P2:吊灯  P3:风扇", 10, 35)
 oled.show()
 time.sleep(1.5)
 

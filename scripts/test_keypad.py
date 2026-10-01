@@ -1,23 +1,44 @@
 # ==============================================================================
-# 单元测试脚本 1：3×4 矩阵薄膜键盘独立扫描测试
-# 用途：测试 P2~P16 排线引脚是否插对，按键是否有反应
+# 单元测试 1：3×4 矩阵键盘 (I2C 总线接口 SCL=P19, SDA=P20) 测试
+# 用途：测试 I2C 接口矩阵键盘是否能被正常扫描识别，验证 12 个键位与出厂密码 123456#
 # ==============================================================================
 from mpython import *
 import time
-from machine import Pin
+from machine import Pin, I2C
 
-# 初始化 4 行 3 列 GPIO (带内部弱上拉)
-ROW_PINS = [
-    Pin(Pin.P2, Pin.IN, Pin.PULL_UP),
-    Pin(Pin.P3, Pin.IN, Pin.PULL_UP),
-    Pin(Pin.P13, Pin.IN, Pin.PULL_UP),
-    Pin(Pin.P14, Pin.IN, Pin.PULL_UP)
-]
-COL_PINS = [
-    Pin(Pin.P15, Pin.OUT),
-    Pin(Pin.P16, Pin.OUT),
-    Pin(Pin.P4, Pin.OUT)
-]
+# 掌控拓展板 I2C 接口定义：SCL 接 P19，SDA 接 P20
+i2c_bus = I2C(scl=Pin(19), sda=Pin(20), freq=100000)
+
+oled.fill(0)
+oled.DispChar("I2C 键盘单元测试", 12, 12)
+oled.DispChar("正在扫描 I2C 设备...", 5, 32)
+oled.show()
+time.sleep(1)
+
+devices = i2c_bus.scan()
+print("I2C 探测到的地址:", [hex(d) for d in devices])
+
+# 排除板载 OLED (0x3c)
+keypad_addr = None
+for addr in [0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x38, 0x39, 0x3F]:
+    if addr in devices:
+        keypad_addr = addr
+        break
+
+if keypad_addr:
+    oled.fill(0)
+    oled.DispChar("I2C 键盘在线!", 18, 15)
+    oled.DispChar("设备地址: " + hex(keypad_addr), 12, 35)
+    oled.show()
+    try: buzzer.pitch(800, 100)
+    except: pass
+    time.sleep(1.5)
+else:
+    oled.fill(0)
+    oled.DispChar("未检测到键盘!", 18, 15)
+    oled.DispChar("请检查4Pin线是否插紧", 5, 35)
+    oled.show()
+    keypad_addr = 0x20 # 默认尝试
 
 KEY_MAP = [
     ['1', '2', '3'],
@@ -27,55 +48,66 @@ KEY_MAP = [
 ]
 
 def scan_key():
-    for c_idx, col in enumerate(COL_PINS):
-        for c in COL_PINS:
-            c.value(1)
-        col.value(0)
-        time.sleep_us(25)
-        for r_idx, row in enumerate(ROW_PINS):
-            if row.value() == 0:
-                for c in COL_PINS:
-                    c.value(1)
-                return KEY_MAP[r_idx][c_idx]
+    try:
+        # PCF8574 逐列输出低电平扫描
+        for c in range(3):
+            out_val = (0xFF ^ (1 << (c + 4)))
+            i2c_bus.writeto(keypad_addr, bytearray([out_val]))
+            time.sleep_us(25)
+            val = i2c_bus.readfrom(keypad_addr, 1)[0]
+            for r in range(4):
+                if not (val & (1 << r)):
+                    i2c_bus.writeto(keypad_addr, b'\xFF')
+                    return KEY_MAP[r][c]
+                    
+        # 兼容反接引脚
+        for c in range(3):
+            out_val = (0xFF ^ (1 << c))
+            i2c_bus.writeto(keypad_addr, bytearray([out_val]))
+            time.sleep_us(25)
+            val = i2c_bus.readfrom(keypad_addr, 1)[0]
+            for r in range(4):
+                if not (val & (1 << (r + 4))):
+                    i2c_bus.writeto(keypad_addr, b'\xFF')
+                    return KEY_MAP[r][c]
+        i2c_bus.writeto(keypad_addr, b'\xFF')
+    except Exception:
+        pass
     return None
 
 oled.fill(0)
-oled.DispChar("3x4 键盘测试启动", 12, 12)
-oled.DispChar("请在实体键盘按下按键", 5, 32)
+oled.DispChar("请在键盘按下按键", 10, 15)
+oled.DispChar("测试输入: 123456#", 8, 35)
 oled.show()
 
-input_history = ""
-
+input_buf = ""
 while True:
     k = scan_key()
     if k:
+        try: buzzer.pitch(1000, 35)
+        except: pass
+        
         if k == '*':
-            input_history = ""
+            input_buf = ""
         elif k == '#':
-            if input_history == "123456":
+            if input_buf == "123456":
                 oled.fill(0)
-                oled.DispChar("★ 密码正确 123456 ★", 5, 20)
+                oled.DispChar("★ 密码正确 123456 ★", 2, 20)
                 oled.show()
-                try: buzzer.pitch(1000, 200)
+                try:
+                    buzzer.pitch(523, 100)
+                    time.sleep_ms(50)
+                    buzzer.pitch(659, 150)
                 except: pass
-                time.sleep(1.5)
-                input_history = ""
-            else:
-                oled.fill(0)
-                oled.DispChar("✘ 密码错误: " + input_history, 5, 20)
-                oled.show()
-                try: buzzer.pitch(400, 300)
-                except: pass
-                time.sleep(1.2)
-                input_history = ""
+                time.sleep(2)
+            input_buf = ""
         else:
-            if len(input_history) < 6:
-                input_history += k
+            if len(input_buf) < 6:
+                input_buf += k
                 
         oled.fill(0)
-        oled.DispChar("按键值: " + k, 15, 12)
-        oled.DispChar("当前输入: " + (input_history if input_history else "[空]"), 10, 34)
+        oled.DispChar("按下按键: [ " + str(k) + " ]", 12, 12)
+        oled.DispChar("已输入: " + input_buf, 10, 34)
         oled.show()
-        try: buzzer.pitch(800, 50)
-        except: pass
-        time.sleep(0.28)
+        time.sleep(0.25)
+    time.sleep(0.02)

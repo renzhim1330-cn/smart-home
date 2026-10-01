@@ -350,7 +350,7 @@ export const IoTSimulator: React.FC = () => {
               {/* Roof slope outline */}
               <div className="absolute top-2 left-4 right-4 h-12 border-t-2 border-r-2 border-slate-700 rounded-tr-3xl opacity-40 pointer-events-none" />
 
-              {/* Ceiling Light (P11) hanging from roof */}
+              {/* Ceiling Light (P2) hanging from roof */}
               <div className="absolute top-3 left-1/2 -translate-x-1/2 flex flex-col items-center z-10">
                 <div className="w-0.5 h-6 bg-slate-500" />
                 <div className={`relative flex items-center justify-center p-2 rounded-full border transition-all duration-500 ${
@@ -364,11 +364,11 @@ export const IoTSimulator: React.FC = () => {
                   )}
                 </div>
                 <span className="text-[9px] font-bold text-amber-300 bg-slate-900/90 px-1.5 py-0.5 rounded border border-slate-700 mt-1">
-                  P11 客厅吊灯: {lightOn ? '大亮' : '灭'}
+                  P2 客厅吊灯: {lightOn ? '大亮' : '灭'}
                 </span>
               </div>
 
-              {/* Mini DC Fan (P5) mounted on back wall */}
+              {/* Mini DC Fan (P3) mounted on back wall */}
               <div className="absolute top-4 right-32 flex flex-col items-center z-10">
                 <div className={`p-2 rounded-xl border transition-all duration-300 ${
                   fanOn
@@ -378,7 +378,7 @@ export const IoTSimulator: React.FC = () => {
                   <Fan className={`w-6 h-6 ${fanOn ? 'text-cyan-300 animate-spin' : 'text-slate-500'}`} />
                 </div>
                 <span className="text-[9px] font-bold text-cyan-300 bg-slate-900/90 px-1.5 py-0.5 rounded border border-slate-700 mt-1">
-                  P5 风扇: {fanOn ? (autoFanTriggered ? '高温排风' : '吹风中') : '停止'}
+                  P3 风扇: {fanOn ? (autoFanTriggered ? '高温排风' : '吹风中') : '停止'}
                 </span>
               </div>
 
@@ -394,7 +394,7 @@ export const IoTSimulator: React.FC = () => {
               <div className="relative w-28 h-52 border-2 border-slate-700 bg-slate-950/80 rounded-t-lg flex flex-col justify-between p-1.5 z-10">
                 {/* Top-mounted Servo inside transom beam */}
                 <div className="w-full bg-slate-800/90 rounded border border-slate-700 p-1 flex items-center justify-between text-[9px] text-amber-300">
-                  <span>SG90 顶置直驱</span>
+                  <span>SG90 顶置直驱 (P0)</span>
                   <span className="font-mono">{doorOpen ? '90°' : '0°'}</span>
                 </div>
 
@@ -417,7 +417,7 @@ export const IoTSimulator: React.FC = () => {
               {/* 3x4 Matrix Keypad Mounted on Wall */}
               <div className="flex flex-col items-center gap-1 bg-slate-950/90 p-2 rounded-xl border border-slate-800 shadow-md z-10">
                 <span className="text-[9px] text-slate-400 font-semibold flex items-center gap-1">
-                  <KeyRound className="w-3 h-3 text-amber-400" /> 3×4 薄膜键盘
+                  <KeyRound className="w-3 h-3 text-amber-400" /> 3×4 I2C 键盘
                 </span>
                 <div className="grid grid-cols-3 gap-1 bg-slate-900 p-1.5 rounded-lg border border-slate-700">
                   {['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map((k) => (

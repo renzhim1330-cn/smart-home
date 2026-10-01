@@ -90,7 +90,7 @@ export const WiringDiagram: React.FC = () => {
 
             {/* External Device 2: 3x4 Matrix Keypad (Left Bottom) */}
             <g
-              onClick={() => setSelectedPin('P2, P3, P13, P14 (行) / P15, P16, P4 (列)')}
+              onClick={() => setSelectedPin('P15, P16, P9')}
               className="cursor-pointer group"
             >
               <rect x="15" y="160" width="125" height="75" rx="6" fill="#1e293b" stroke="#eab308" strokeWidth="2" />
@@ -98,10 +98,10 @@ export const WiringDiagram: React.FC = () => {
                 3×4 矩阵薄膜键盘
               </text>
               <text x="77" y="205" fill="#94a3b8" fontSize="8.5" textAnchor="middle">
-                P2-P14 行 / P15-P4 列
+                P2-P14 行 / P15,P16,P9 列
               </text>
               <text x="77" y="222" fill="#34d399" fontSize="8" textAnchor="middle">
-                7P 排线直插拓展板
+                7P 排线直插拓展板 (原P4改P9)
               </text>
               {/* Wire Keypad */}
               <path d="M 140 197 Q 160 197 180 200" stroke="#eab308" strokeWidth="2.5" fill="none" />

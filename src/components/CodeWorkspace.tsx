@@ -11,19 +11,49 @@ export const CodeWorkspace: React.FC = () => {
   const unitTestScripts = {
     keypad: {
       name: 'test_keypad.py',
-      title: '3×4 矩阵薄膜键盘独立测试',
-      desc: '插好 P2~P16 排线后运行，按下 1~9、0、*、#，测试屏幕回显与按 123456# 验证',
+      title: '3×4 矩阵智能键盘 (I2C 专用总线) 测试',
+      desc: '插上 4Pin 排线连接拓展板 I2C 座 (SCL=P19, SDA=P20)，0占用GPIO，测试 12 个键位与 123456# 验证',
       code: `# ==============================================================================
-# 单元测试 1：3×4 矩阵薄膜键盘独立扫描测试
-# 用途：测试 P2, P3, P13, P14 (行) 与 P15, P16, P4 (列) 连线
+# 单元测试 1：3×4 矩阵键盘 (I2C 总线接口 SCL=P19, SDA=P20) 测试
+# 用途：测试 I2C 接口矩阵键盘是否能被正常扫描识别，验证 12 个键位与出厂密码 123456#
 # ==============================================================================
 from mpython import *
 import time
-from machine import Pin
+from machine import Pin, I2C
 
-ROW_PINS = [Pin(Pin.P2, Pin.IN, Pin.PULL_UP), Pin(Pin.P3, Pin.IN, Pin.PULL_UP),
-            Pin(Pin.P13, Pin.IN, Pin.PULL_UP), Pin(Pin.P14, Pin.IN, Pin.PULL_UP)]
-COL_PINS = [Pin(Pin.P15, Pin.OUT), Pin(Pin.P16, Pin.OUT), Pin(Pin.P4, Pin.OUT)]
+# 掌控拓展板 I2C 接口定义：SCL 接 P19，SDA 接 P20
+i2c_bus = I2C(scl=Pin(19), sda=Pin(20), freq=100000)
+
+oled.fill(0)
+oled.DispChar("I2C 键盘单元测试", 12, 12)
+oled.DispChar("正在扫描 I2C 设备...", 5, 32)
+oled.show()
+time.sleep(1)
+
+devices = i2c_bus.scan()
+print("I2C 探测到的地址:", [hex(d) for d in devices])
+
+# 排除板载 OLED (0x3c)
+keypad_addr = None
+for addr in [0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x38, 0x39, 0x3F]:
+    if addr in devices:
+        keypad_addr = addr
+        break
+
+if keypad_addr:
+    oled.fill(0)
+    oled.DispChar("I2C 键盘在线!", 18, 15)
+    oled.DispChar("设备地址: " + hex(keypad_addr), 12, 35)
+    oled.show()
+    try: buzzer.pitch(800, 100)
+    except: pass
+    time.sleep(1.5)
+else:
+    oled.fill(0)
+    oled.DispChar("未检测到键盘!", 18, 15)
+    oled.DispChar("请检查4Pin线是否插紧", 5, 35)
+    oled.show()
+    keypad_addr = 0x20
 
 KEY_MAP = [
     ['1', '2', '3'],
@@ -32,27 +62,44 @@ KEY_MAP = [
     ['*', '0', '#']
 ]
 
-def scan():
-    for c_idx, col in enumerate(COL_PINS):
-        for c in COL_PINS: c.value(1)
-        col.value(0)
-        time.sleep_us(25)
-        for r_idx, row in enumerate(ROW_PINS):
-            if row.value() == 0:
-                for c in COL_PINS: c.value(1)
-                return KEY_MAP[r_idx][c_idx]
+def scan_key():
+    try:
+        for c in range(3):
+            out_val = (0xFF ^ (1 << (c + 4)))
+            i2c_bus.writeto(keypad_addr, bytearray([out_val]))
+            time.sleep_us(25)
+            val = i2c_bus.readfrom(keypad_addr, 1)[0]
+            for r in range(4):
+                if not (val & (1 << r)):
+                    i2c_bus.writeto(keypad_addr, b'\\xFF')
+                    return KEY_MAP[r][c]
+                    
+        for c in range(3):
+            out_val = (0xFF ^ (1 << c))
+            i2c_bus.writeto(keypad_addr, bytearray([out_val]))
+            time.sleep_us(25)
+            val = i2c_bus.readfrom(keypad_addr, 1)[0]
+            for r in range(4):
+                if not (val & (1 << (r + 4))):
+                    i2c_bus.writeto(keypad_addr, b'\\xFF')
+                    return KEY_MAP[r][c]
+                    
+        i2c_bus.writeto(keypad_addr, b'\\xFF')
+    except:
+        pass
     return None
 
 oled.fill(0)
-oled.DispChar("3x4 键盘测试启动", 15, 15)
+oled.DispChar("3x4 键盘测试就绪", 15, 15)
 oled.DispChar("请按实体键输入...", 10, 35)
 oled.show()
 
 buf = ""
 while True:
-    k = scan()
+    k = scan_key()
     if k:
-        if k == '*': buf = ""
+        if k == '*': 
+            buf = ""
         elif k == '#':
             oled.fill(0)
             oled.DispChar("验证: " + buf, 15, 20)
@@ -110,10 +157,10 @@ while True:
     sensors: {
       name: 'test_sensors.py',
       title: 'DHT11温湿度与PIR人体双重联动测试',
-      desc: 'DHT11接P1、PIR接P8；验证温度>28℃且有人感应时触发红灯排风，无人时提示节能待机',
+      desc: 'DHT11接P1、PIR接P5；验证温度>28℃且有人感应时触发红灯排风，无人时提示节能待机',
       code: `# ==============================================================================
-# 单元测试 3：DHT11 温湿度与 PIR 人体红外双重联动测试
-# 用途：测试 P1 单总线与 P8 红外探头，温度 >28℃ 且有人感应时触发排风联动
+# 单元测试 3：DHT11 温湿度 (P1) 与 PIR 人体红外 (P5) 双重联动测试
+# 用途：测试 P1 (DHT11) 与 P5 (PIR数字输入)，温度 >28℃ 且有人感应时触发排风联动
 # ==============================================================================
 from mpython import *
 import time
@@ -121,7 +168,7 @@ import dht
 from machine import Pin
 
 dht_dev = dht.DHT11(Pin(Pin.P1))
-pir_dev = Pin(Pin.P8, Pin.IN)
+pir_dev = Pin(Pin.P5, Pin.IN)
 
 while True:
     t, h = 25.0, 50.0
@@ -161,18 +208,18 @@ while True:
     },
     fan_light: {
       name: 'test_fan_light.py',
-      title: '实体客厅吊灯 (P11) 与排风扇 (P5) 测试',
-      desc: 'P11接吊灯模块，P5接微型风扇；自动循环测试：仅开灯、仅开扇、全开、全关',
+      title: '实体客厅吊灯 (P2) 与微型排风扇 (P3) 测试',
+      desc: 'P2接吊灯模块，P3接微型风扇；自动循环测试：仅开灯、仅开扇、全开、全关',
       code: `# ==============================================================================
-# 单元测试 4：客厅实体吸顶吊灯 (P11) 与智能微型风扇 (P5) 测试
-# 用途：测试 P11 实体白光 LED 照亮室内 与 P5 微型直流风扇旋转吹风
+# 单元测试 4：客厅实体高亮吊灯 (P2) 与智能微型风扇 (P3) 独立测试
+# 用途：测试 P2 实体白光 LED 照亮室内 与 P3 微型直流风扇旋转吹风
 # ==============================================================================
 from mpython import *
 import time
 from machine import Pin
 
-light_pin = Pin(Pin.P11, Pin.OUT)
-fan_pin = Pin(Pin.P5, Pin.OUT)
+light_pin = Pin(Pin.P2, Pin.OUT)
+fan_pin = Pin(Pin.P3, Pin.OUT)
 
 step = 0
 while True:

@@ -1,6 +1,6 @@
 # ==============================================================================
-# 单元测试脚本 3：DHT11 温湿度与 PIR 人体红外双重联动测试
-# 用途：测试 P1 (DHT11) 与 P8 (PIR)，验证温度 > 28℃ 且感应有人时触发排风联动
+# 单元测试脚本 3：DHT11 温湿度 (P1) 与 PIR 人体红外 (P5) 双重联动测试
+# 用途：测试 P1 (DHT11) 与 P5 (PIR数字输入)，验证温度 > 28℃ 且感应有人时触发排风
 # ==============================================================================
 from mpython import *
 import time
@@ -9,13 +9,14 @@ from machine import Pin
 
 # P1 口接 DHT11 单总线
 dht_dev = dht.DHT11(Pin(Pin.P1))
-# P8 口接 PIR 人体红外
-pir_dev = Pin(Pin.P8, Pin.IN)
+# P5 口接 PIR 人体红外 (P5在拓展板上为纯数字输入，完美匹配PIR)
+pir_dev = Pin(Pin.P5, Pin.IN)
 
 oled.fill(0)
 oled.DispChar("双重环境联动测试", 10, 15)
-oled.DispChar("哈气>28C 且 有人感应", 5, 35)
+oled.DispChar("P1:DHT11  P5:PIR", 12, 35)
 oled.show()
+time.sleep(1.5)
 
 while True:
     # 1. 采集温湿度

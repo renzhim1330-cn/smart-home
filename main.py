@@ -1,15 +1,16 @@
 # ==============================================================================
-# 项目名称：智馨家园 · 掌控板 2.0 全屋智能沙盘控制系统 (V2.0 语音+全屋智能版)
+# 项目名称：智馨家园 · 掌控板 2.0 全屋智能沙盘控制系统 (V2.1 I2C键盘+真实引脚旗舰版)
 # 运行环境：ESP32 MicroPython (mPython 固件)
-# 核心外设：
-#   - 离线语音识别模块 (ASR01/HLK-V20)：P6 (RX), P7 (TX) UART1 波特率 9600
-#   - 客厅实体吸顶吊灯：P11 (高电平开灯，低电平关灯)
-#   - 智能微型排风扇：P5 (声控启停 + DHT11 遇热 > 28℃ 自动排风)
+# 核心外设 (盛思掌控拓展板真实引脚完美映射):
+#   - 3×4 矩阵智能键盘：I2C 专用总线接口 (SCL=P19, SDA=P20, 地址 0x20/0x27/0x38 自动探测)
 #   - 入户大门 SG90 舵机：P0 门梁顶置同心直驱 (5V 独立供电)
-#   - 3×4 矩阵薄膜键盘：行(P2, P3, P13, P14)，列(P15, P16, P4)
 #   - DHT11 温湿度传感器：P1 单总线
-#   - PIR 人体红外传感器：P8 (离家布防防盗)
+#   - 客厅实体高亮吊灯：P2 (高电平开灯，低电平关灯)
+#   - 智能微型排风扇：P3 (声控启停 + 温度>28℃且有人 双重温控自动排风)
+#   - PIR 人体红外传感器：P5 数字电平输入 (室内有人判定 + 离家布防防盗)
+#   - 离线语音识别模块 (ASR01/HLK-V20)：P6 (RX), P7 (TX) UART1 波特率 9600
 #   - 板载：1.3寸 OLED (I2C)、WS2812 RGB 灯、蜂鸣器、ESP32 AP 热点 (192.168.4.1)
+#   - 拓展板空闲备用引脚：P11, P13, P14, P15, P16 (整整5个高扩展引脚！)
 # ==============================================================================
 
 import time
@@ -17,39 +18,91 @@ import network
 import socket
 import dht
 from mpython import *
-from machine import PWM, Pin, UART
+from machine import PWM, Pin, UART, I2C
 
 # ----------------- 1. 硬件外设与引脚初始化 -----------------
 # 门舵机 P0 (PWM 50Hz)
 servo_pin = Pin(0, Pin.OUT)
 servo_pwm = PWM(servo_pin, freq=50)
 
-# 客厅吊灯 P11 与 微型风扇 P5
-light_pin = Pin(11, Pin.OUT)
-fan_pin = Pin(5, Pin.OUT)
+# 客厅吊灯 P2 与 微型风扇 P3 (纯净数字GPIO，与按键完全隔离)
+light_pin = Pin(2, Pin.OUT)
+fan_pin = Pin(3, Pin.OUT)
 light_pin.value(0)
 fan_pin.value(0)
 
-# 温湿度与人体红外
+# 温湿度 P1 与 人体红外 P5 (P5为标准输入引脚，完美契合PIR)
 dht_dev = dht.DHT11(Pin(1))
-pir_sensor = Pin(8, Pin.IN)
+pir_sensor = Pin(5, Pin.IN)
 
 # 离线语音模块串口 UART1 (P6: RX, P7: TX)
 uart_voice = UART(1, baudrate=9600, rx=Pin(6), tx=Pin(7))
 
-# 3×4 薄膜键盘 GPIO
-ROW_PINS = [Pin(2, Pin.IN, Pin.PULL_UP), Pin(3, Pin.IN, Pin.PULL_UP), 
-            Pin(13, Pin.IN, Pin.PULL_UP), Pin(14, Pin.IN, Pin.PULL_UP)]
-COL_PINS = [Pin(15, Pin.OUT), Pin(16, Pin.OUT), Pin(4, Pin.OUT)]
+# ----------------- 2. I2C 3×4 矩阵键盘驱动 -----------------
+# 掌控板 I2C 接口：SCL=19, SDA=20
+# 支持标准 PCF8574 / TCA8574 矩阵键盘模块 (常见地址 0x20, 0x27, 0x38, 0x3F)
+i2c_bus = I2C(scl=Pin(19), sda=Pin(20), freq=100000)
 
-KEY_MAP = [
+KEYPAD_I2C_ADDR = None
+POSSIBLE_ADDRS = [0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x38, 0x39, 0x3F]
+
+# 探测 I2C 设备
+scanned_devices = i2c_bus.scan()
+print("I2C 总线已扫描到设备地址:", [hex(a) for a in scanned_devices])
+for addr in POSSIBLE_ADDRS:
+    if addr in scanned_devices and addr != 0x3C: # 0x3C 通常是板载 OLED
+        KEYPAD_I2C_ADDR = addr
+        print("锁定 I2C 矩阵键盘地址: ", hex(KEYPAD_I2C_ADDR))
+        break
+
+if not KEYPAD_I2C_ADDR:
+    KEYPAD_I2C_ADDR = 0x20 # 默认候选地址
+
+KEY_MAP_3x4 = [
     ['1', '2', '3'],
     ['4', '5', '6'],
     ['7', '8', '9'],
     ['*', '0', '#']
 ]
 
-# ----------------- 2. 系统全局运行状态 -----------------
+def scan_i2c_keypad():
+    """读取 I2C 矩阵键盘 (4行低4位，3列高4位 或 4行高4位，3列低4位兼容扫描)"""
+    if KEYPAD_I2C_ADDR not in scanned_devices:
+        return None
+    try:
+        # PCF8574 逐列发送低电平扫描
+        col_masks = [0b11111110, 0b11111101, 0b11111011] # 对应低3位或高3位
+        for col_idx in range(3):
+            # 激活对应列 (例如输出 0)，其余引脚设为 1 上拉
+            out_byte = (0xFF ^ (1 << (col_idx + 4))) # 列接在 P4, P5, P6
+            i2c_bus.writeto(KEYPAD_I2C_ADDR, bytearray([out_byte]))
+            time.sleep_us(30)
+            in_data = i2c_bus.readfrom(KEYPAD_I2C_ADDR, 1)[0]
+            
+            # 检测低 4 位行 (P0~P3)
+            for row_idx in range(4):
+                if not (in_data & (1 << row_idx)):
+                    # 恢复高电平
+                    i2c_bus.writeto(KEYPAD_I2C_ADDR, b'\xFF')
+                    return KEY_MAP_3x4[row_idx][col_idx]
+                    
+        # 兼容反向引脚接法 (列接 P0~P2，行接 P4~P7)
+        for col_idx in range(3):
+            out_byte = (0xFF ^ (1 << col_idx))
+            i2c_bus.writeto(KEYPAD_I2C_ADDR, bytearray([out_byte]))
+            time.sleep_us(30)
+            in_data = i2c_bus.readfrom(KEYPAD_I2C_ADDR, 1)[0]
+            for row_idx in range(4):
+                if not (in_data & (1 << (row_idx + 4))):
+                    i2c_bus.writeto(KEYPAD_I2C_ADDR, b'\xFF')
+                    return KEY_MAP_3x4[row_idx][col_idx]
+                    
+        i2c_bus.writeto(KEYPAD_I2C_ADDR, b'\xFF')
+    except Exception:
+        pass
+    return None
+
+# ----------------- 3. 系统全局运行状态 -----------------
 current_pwd = "123456"
 input_buffer = ""
 wrong_attempts = 0
@@ -69,19 +122,6 @@ voice_feedback_str = "系统就绪 监听语音"
 is_modifying_pwd = False
 modify_step = 0
 
-def scan_keypad():
-    """扫描 3×4 矩阵薄膜键盘按键"""
-    for c_idx, col in enumerate(COL_PINS):
-        for c in COL_PINS: c.value(1)
-        col.value(0)
-        time.sleep_us(20)
-        for r_idx, row in enumerate(ROW_PINS):
-            if row.value() == 0:
-                for c in COL_PINS: c.value(1)
-                return KEY_MAP[r_idx][c_idx]
-    for c in COL_PINS: c.value(1)
-    return None
-
 def set_servo_angle(angle):
     """设置舵机旋转角度 0~180°"""
     angle = max(0, min(180, angle))
@@ -89,14 +129,14 @@ def set_servo_angle(angle):
     servo_pwm.duty(duty)
 
 def set_light(state):
-    """控制客厅实体吸顶吊灯 (P11)"""
+    """控制客厅实体吸顶吊灯 (P2)"""
     global light_is_on
     light_is_on = state
     light_pin.value(1 if state else 0)
     refresh_dashboard()
 
 def set_fan(state, is_auto=False):
-    """控制智能微型排风扇 (P5)"""
+    """控制智能微型排风扇 (P3)"""
     global fan_is_on, auto_fan_active
     fan_is_on = state
     auto_fan_active = is_auto
@@ -173,9 +213,9 @@ def refresh_dashboard():
     else:
         oled.DispChar("【智馨家园·控制中心】", 0, 0)
         
-    # 第一行：温湿度 + 高温排风标识
+    # 第一行：温湿度 + 双重高温排风标识
     temp_str = "{:.1f}C/{}%".format(curr_temp, int(curr_hum))
-    if curr_temp > 28.0:
+    if curr_temp > 28.0 and pir_sensor.value() == 1:
         temp_str += " [高温排风]"
     oled.DispChar(temp_str, 0, 16)
     
@@ -196,7 +236,7 @@ def refresh_dashboard():
     oled.DispChar(status_line, 0, 48)
     oled.show()
 
-# ----------------- 3. 启动 AP 本地局域网热点 -----------------
+# ----------------- 4. 启动 AP 本地局域网热点 -----------------
 ap = network.WLAN(network.AP_IF)
 ap.active(True)
 ap.config(essid='SmartHome-IoT', authmode=network.AUTH_OPEN)
@@ -208,12 +248,12 @@ web_socket.bind(('192.168.4.1', 80))
 web_socket.listen(2)
 web_socket.settimeout(0.03)
 
-HTML_PAGE = """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>智馨家园控制台</title><style>body{{font-family:sans-serif;background:#0f172a;color:#fff;text-align:center;padding:12px;margin:0}}h2{{color:#38bdf8;margin:6px 0}}.card{{background:#1e293b;border-radius:12px;padding:12px;margin-bottom:10px}}.btn{{display:inline-block;width:88%;padding:12px;margin:5px 0;font-size:15px;font-weight:bold;color:#fff;background:#2563eb;border:none;border-radius:8px;text-decoration:none;cursor:pointer}}.btn-active{{background:#10b981}}.btn-warning{{background:#f59e0b}}.btn-purple{{background:#8b5cf6}}.val{{font-size:22px;font-weight:bold;color:#4ade80}}input{{padding:10px;border-radius:6px;border:1px solid #475569;width:75%;margin:6px 0;background:#0f172a;color:#fff;text-align:center;font-size:16px}}</style></head><body><h2>🏡 智馨家园 · 全屋控制中心</h2><p style="color:#94a3b8;font-size:11px">AP直连: SmartHome-IoT | 离线语音+门禁版</p><div class="card"><p>室内实时温湿度</p><div class="val">{:.1f}℃ / {:.1f}%</div><p style="font-size:11px;color:#94a3b8">大于28℃且有人感应时自动开启排风</p></div><div class="card"><p>智能灯光与电扇 (实时状态)</p><a href="/toggle_light" class="btn {}">客厅吊灯: {}</a><a href="/toggle_fan" class="btn {}">智能排风扇: {}</a></div><div class="card"><p>智能门禁与安防 (当前门: {})</p><a href="/open" class="btn">★ 手机一键远程开门 (90°)</a><a href="/arm" class="btn btn-warning">切换【离家布防模式】</a></div><div class="card"><p>在线修改门禁密码 (当前: {})</p><form action="/setpwd" method="GET"><input type="text" name="pwd" placeholder="输入6位新密码" maxlength="6"><br><button type="submit" class="btn btn-purple">确认更新密码</button></form></div></body></html>"""
+HTML_PAGE = """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>智馨家园控制台</title><style>body{{font-family:sans-serif;background:#0f172a;color:#fff;text-align:center;padding:12px;margin:0}}h2{{color:#38bdf8;margin:6px 0}}.card{{background:#1e293b;border-radius:12px;padding:12px;margin-bottom:10px}}.btn{{display:inline-block;width:88%;padding:12px;margin:5px 0;font-size:15px;font-weight:bold;color:#fff;background:#2563eb;border:none;border-radius:8px;text-decoration:none;cursor:pointer}}.btn-active{{background:#10b981}}.btn-warning{{background:#f59e0b}}.btn-purple{{background:#8b5cf6}}.val{{font-size:22px;font-weight:bold;color:#4ade80}}input{{padding:10px;border-radius:6px;border:1px solid #475569;width:75%;margin:6px 0;background:#0f172a;color:#fff;text-align:center;font-size:16px}}</style></head><body><h2>🏡 智馨家园 · 全屋控制中心</h2><p style="color:#94a3b8;font-size:11px">AP直连: SmartHome-IoT | I2C键盘+语音版</p><div class="card"><p>室内实时温湿度</p><div class="val">{:.1f}℃ / {:.1f}%</div><p style="font-size:11px;color:#94a3b8">大于28℃且室内有人感应时自动开启排风</p></div><div class="card"><p>智能灯光与电扇 (实时状态)</p><a href="/toggle_light" class="btn {}">客厅吊灯(P2): {}</a><a href="/toggle_fan" class="btn {}">智能排风扇(P3): {}</a></div><div class="card"><p>智能门禁与安防 (当前门: {})</p><a href="/open" class="btn">★ 手机一键远程开门 (90°)</a><a href="/arm" class="btn btn-warning">切换【离家布防模式】</a></div><div class="card"><p>在线修改门禁密码 (当前: {})</p><form action="/setpwd" method="GET"><input type="text" name="pwd" placeholder="输入6位新密码" maxlength="6"><br><button type="submit" class="btn btn-purple">确认更新密码</button></form></div></body></html>"""
 
 # 初始舵机与显示归位
 set_servo_angle(0)
 refresh_dashboard()
-print("系统启动就绪，正在监听 3×4 键盘、离线语音 UART 与手机 AP Web 请求...")
+print("系统启动就绪，正在监听 I2C 矩阵键盘、离线语音 UART (P6/P7) 与手机 AP Web 请求...")
 
 # 离线语音识别口令映射表
 VOICE_CMDS = {
@@ -272,7 +312,7 @@ while True:
             button_a_press_start = 0
             refresh_dashboard()
 
-    # ---------------- 1. 离线语音识别模块串口 (UART1) 监听 ----------------
+    # ---------------- 1. 离线语音识别模块串口 (UART1: P6/P7) 监听 ----------------
     if uart_voice.any():
         raw_v = uart_voice.read()
         cmd_matched = None
@@ -303,8 +343,8 @@ while True:
             except: pass
         refresh_dashboard()
 
-    # ---------------- 2. 3×4 薄膜键盘扫描 ----------------
-    key = scan_keypad()
+    # ---------------- 2. I2C 3×4 矩阵键盘扫描 ----------------
+    key = scan_i2c_keypad()
     if key and time.ticks_diff(now, last_key_press_time) > 280:
         last_key_press_time = now
         try: buzzer.pitch(800, 35)
@@ -386,11 +426,11 @@ while True:
                         time.sleep(1.2)
                         refresh_dashboard()
                         
-    # ---------------- 3. 防盗报警检测 (离家布防下 PIR 人体红外入侵) ----------------
+    # ---------------- 3. 防盗报警检测 (离家布防下 PIR P5 人体红外入侵) ----------------
     if is_armed and pir_sensor.value() == 1 and not is_alarm_active and not door_is_open:
         trigger_security_alarm("离家布防-人体入侵")
         
-    # ---------------- 4. 定时采集 DHT11 温湿度与 28℃ 高温自动排风 ----------------
+    # ---------------- 4. 定时采集 DHT11 温湿度与 双重高温排风 (P3) ----------------
     if time.ticks_diff(now, last_sensor_time) > 2000:
         last_sensor_time = now
         try:
@@ -456,7 +496,7 @@ while True:
             btn_fan_cls, btn_fan_txt,
             door_str, current_pwd
         )
-        conn.send('HTTP/1.1 200 OK\\r\\nContent-Type: text/html\\r\\n\\r\\n' + resp)
+        conn.send('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n' + resp)
         conn.close()
     except OSError:
         pass
